@@ -1,0 +1,25 @@
+[project]
+name = "ece-ia-lab-who-spoke"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "librosa>=0.11.0",
+    "matplotlib>=3.11.2",
+    "pyannote-audio>=4.0.7",
+    "pyannote-metrics>=4.2.0",
+    "python-dotenv>=1.2.4",
+    "scikit-learn>=1.9.1",
+    "soundfile>=0.14.0",
+]
+
+[project.scripts]
+ece-ia-lab-who-spoke = "whospoke:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "whospoke"

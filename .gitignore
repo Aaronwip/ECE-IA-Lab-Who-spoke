@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Who Spoke? : jamais de données, de sorties ni d'audio dans le repo
+data/
+outputs/
+*.wav
+*.mp3
+*.mp4
+*.m4a
+*.flac
