@@ -227,3 +227,7 @@ outputs/
 *.mp4
 *.m4a
 *.flac
+*.ogg
+*.opus
+*.zip
+*.part
