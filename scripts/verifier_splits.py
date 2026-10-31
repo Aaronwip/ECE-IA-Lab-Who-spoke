@@ -16,7 +16,7 @@ Limite : les locuteurs VoxConverse s'appellent spk00, spk01... dans CHAQUE fichi
 pas des identités globales, donc on ne peut pas vérifier les locuteurs entre fichiers VoxConverse.
 
 Usage :
-    uv run python scripts/verifier_splits.py      # code de sortie 1 si une fuite est trouvée
+    uv run python scripts/verifier_splits.py   # sortie 1 = fuite trouvée, 2 = données incomplètes
 """
 import argparse
 import sys
@@ -85,6 +85,14 @@ def main():
     parser.add_argument("--voxconverse-dev", default="data/raw/dev")
     parser.add_argument("--voxconverse-test", default="data/raw/test")
     args = parser.parse_args()
+
+    # Sans les 3 listes officielles, on ne peut rien affirmer : on le dit au lieu de répondre « OK »
+    manquantes = [f"{s}.{l}.txt" for s in SPLITS for l in ["meetings", "speakers"]
+                  if not (Path(args.ami) / "lists" / f"{s}.{l}.txt").exists()]
+    if manquantes:
+        print(f"INCOMPLET : listes AMI absentes {manquantes}. "
+              f"Lancer scripts/telecharger_ami.py, puis relancer cette vérification.")
+        sys.exit(2)
 
     erreurs, reunions = verifier_ami(args.ami)
     for split in SPLITS:
