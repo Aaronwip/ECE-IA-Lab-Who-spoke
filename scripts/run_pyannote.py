@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(description="Diarisation pyannote d'un dossier 
 parser.add_argument("--audio", default="data/raw/audio", help="dossier des .wav")
 parser.add_argument("--sortie", default="outputs/pyannote_dev", help="dossier des RTTM prédits")
 parser.add_argument("--limite", type=int, default=3, help="nombre de fichiers à traiter")
+parser.add_argument("--modele", default="pyannote/speaker-diarization-community-1",
+                    help="pipeline Hugging Face (ex. pyannote/speaker-diarization-3.1)")
 args = parser.parse_args()
 
 # Tri alphabétique : on prend toujours les mêmes fichiers, donc les runs restent comparables
@@ -24,7 +26,7 @@ fichiers = sorted(Path(args.audio).glob("*.wav"))[: args.limite]
 
 load_dotenv()  # charge HF_TOKEN depuis le fichier .env
 pipeline = Pipeline.from_pretrained(
-    "pyannote/speaker-diarization-community-1",
+    args.modele,
     token=os.getenv("HF_TOKEN"),
 )
 
@@ -45,7 +47,8 @@ for i, chemin in enumerate(fichiers, start=1):
     duree = time.perf_counter() - debut
     temps_total += duree
 
-    diarization = output.speaker_diarization
+    # community-1 renvoie un objet avec .speaker_diarization ; 3.1 peut renvoyer l'annotation directement
+    diarization = getattr(output, "speaker_diarization", output)
     diarization.uri = chemin.stem  # même identifiant que dans le RTTM de référence
     with open(sortie / f"{chemin.stem}.rttm", "w") as f:
         diarization.write_rttm(f)
