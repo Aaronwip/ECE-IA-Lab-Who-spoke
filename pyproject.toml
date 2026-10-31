@@ -23,3 +23,14 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "whospoke"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+# eval/ n'est pas un paquet Python : on l'ajoute au chemin pour que les tests puissent `import score`
+pythonpath = ["eval", "scripts"]
+testpaths = ["tests"]
+filterwarnings = ["ignore:.*approximated.*:UserWarning"]
