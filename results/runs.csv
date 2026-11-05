@@ -1,3 +1,4 @@
 date,approche,parametres,jeu,nb_fichiers,der_strict,miss_strict,fa_strict,conf_strict,der_standard,miss_standard,fa_standard,conf_standard,jer,temps_s
 2026-10-24,pyannote-community-1,defaut,voxconverse-dev,3,5.94,1.96,2.69,1.29,2.1,0.74,0.97,0.39,7.99,432.9
 2026-10-25,pyannote-community-1,defaut,voxconverse-dev-25,25,6.87,2.72,2.29,1.85,3.58,1.69,0.74,1.14,19.09,5388.8
+2026-11-06,vad-energie,seuil=-40dB,voxconverse-dev-10,10,49.48,9.42,2.61,37.46,46.92,7.42,1.5,38.01,81.2,4.3
