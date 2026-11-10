@@ -3,3 +3,4 @@ date,approche,parametres,jeu,nb_fichiers,der_strict,miss_strict,fa_strict,conf_s
 2026-10-25,pyannote-community-1,defaut,voxconverse-dev-25,25,6.87,2.72,2.29,1.85,3.58,1.69,0.74,1.14,19.09,5388.8
 2026-11-06,vad-energie,seuil=-40dB,voxconverse-dev-10,10,49.48,9.42,2.61,37.46,46.92,7.42,1.5,38.01,81.2,4.3
 2026-11-06,mfcc-oracle,seuil=-40dB;fenetre=1s;k=oracle,voxconverse-dev-10,10,41.74,9.42,2.61,29.71,38.45,7.42,1.5,29.54,56.79,1.5
+2026-11-10,pyannote-community-1,fichier entier,voxconverse-dev-10,10,5.51,2.24,2.05,1.21,2.53,1.19,0.64,0.69,15.29,

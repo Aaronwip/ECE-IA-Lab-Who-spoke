@@ -7,3 +7,35 @@ Rep 1 : le pari etait bon mais tout dépendra de la suite pour savoir quoi cible
 3. Musique : dans afjiv, on impose 5 groupes pour 5 vrais locuteurs, mais tu as entendu de la musique que le détecteur laisse passer. Que peut-il arriver à cette musique, et à l'un des locuteurs ?
 -> Elle peut etre interprétée comme un autre locuteur alors que c'est de la musique. Le systeme ne se trompera pas et interpretera le bon nombre de locuteur
 Rep 1 : A confirmer par la suite 
+
+Test du 10/11 : 
+1. Quelle étape prend le plus de temps : segmentation, embeddings ou clustering ? Indice : relis le nombre de fois que chaque réseau tourne. --> la segmentation 
+2. Quelle part du total prend cette étape : moins de 50 %, entre 50 et 80 %, ou plus de 80 % ? --> moins de 50%
+3. Vitesse sur ce fichier : moins de 0,5 fois la durée de l'audio, entre 0,5 et 1 fois, ou plus d'une fois ? Indice : la moyenne sur tes 25 fichiers était d'environ 0,7 fois. --> entre 0,5 et 1 fois
+
+Résultat test 1 : 
+                     Pari                      │     Résultat      │ Verdict │
+├────────────────────────────────────────────────┼───────────────────┼─────────┤
+│ Q1 : l'étape la plus lente est la segmentation │ Embeddings, 451 s │ ❌      │
+├────────────────────────────────────────────────┼───────────────────┼─────────┤
+│ Q2 : cette étape prend moins de 50 %           │ 97 %              │ ❌      │
+├────────────────────────────────────────────────┼───────────────────┼─────────┤
+│ Q3 : entre 0,5 et 1 fois la durée de l'audio   │ 0,70 fois         │ ✅      │
+
+Test 2 du 10/11 : 
+1. DER standard : pyannote sur le fichier entier fait environ 3,6 %. Avec les paquets, tu le vois à moins de 5 %, entre 5 et 15 %, ou au-dessus de 15 % ? --> moins de 5 %
+2. Quelle composante va le plus augmenter : parole ratée, fausse alerte ou confusion ? Indice : qu'est-ce qui peut mal se passer dans la mise en relation des locuteurs ? --> confusion
+3. Seuil trop haut (0,7) : tu prévois trop de locuteurs ou pas assez ? Et quelle composante du DER en souffrira ? --> Pas assez
+
+Run A avec pyannote :
+Résultat marquant : Le MFCC avec k oracle fait 41,7 % en strict, pyannote 5,5 %, soit environ 7,5 fois moins d'erreur. Et pyannote doit en plus trouver seul le nombre de locuteurs.
+
+Analyse : Les tests doivent desormais poursuivre sur pyannote. Le DER passe de 5,51 % à 2,53 % dès qu'on ignore 0,25 s de chaque côté de chaque changement de locuteur
+
+│ Fichier │     Référence      │    pyannote    │ DER strict │  JER   │
+├─────────┼────────────────────┼────────────────┼────────────┼────────┤
+│ aufkn   │ 172 s / 15 s / 1 s │ 172 s / 9 s    │ 7,3 %      │ 49,6 % │
+├─────────┼────────────────────┼────────────────┼────────────┼────────┤
+│ azisu   │ 91 / 67 / 60 / 5 s │ 85 / 68 / 65 s │ 9,5 %      │ 32,5 % │
+├─────────┼────────────────────┼────────────────┼────────────┼────────┤
+│ aisvi   │ 8 locuteurs        │ 8 locuteurs ✅ │ 3,8 %      │ 13,0 % │
