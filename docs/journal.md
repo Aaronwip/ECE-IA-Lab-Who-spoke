@@ -39,3 +39,34 @@ Analyse : Les tests doivent desormais poursuivre sur pyannote. Le DER passe de 5
 │ azisu   │ 91 / 67 / 60 / 5 s │ 85 / 68 / 65 s │ 9,5 %      │ 32,5 % │
 ├─────────┼────────────────────┼────────────────┼────────────┼────────┤
 │ aisvi   │ 8 locuteurs        │ 8 locuteurs ✅ │ 3,8 %      │ 13,0 % │
+
+Run A (fichier entier) contre run B (paquets de 60 s)
+
+┌──────────────────┬────────┬──────┬─────────────┬───────────┬────────┬──────────────────────────────────────────┐
+│                  │  DER   │ Raté │   Fausse    │ Confusion │  JER   │                 Vitesse                  │
+│                  │  std   │      │   alerte    │           │        │                                          │
+├──────────────────┼────────┼──────┼─────────────┼───────────┼────────┼──────────────────────────────────────────┤
+│ A (fichier       │ 2,53 % │ 1,19 │ 0,64        │ 0,69      │ 15,29  │ 0,70 fois la durée de l'audio,           │
+│ entier)          │        │      │             │           │ %      │ impossible en direct                     │
+├──────────────────┼────────┼──────┼─────────────┼───────────┼────────┼──────────────────────────────────────────┤
+│ B (paquets de 60 │ 3,25 % │ 1,28 │ 0,63        │ 1,34      │ 16,84  │ 0,60 fois, direct possible               │
+│  s)              │        │      │             │           │ %      │                                          │
+└──────────────────┴────────┴──────┴─────────────┴───────────┴────────┴──────────────────────────────────────────┘
+
+RUN C :  parmi 0,3, 0,4, 0,5, 0,6 et 0,7, lequel donnera la confusion la plus basse ? Inférieur à 0,5, 0,5 lui-même, ou supérieur ? Donne une raison en une ligne. -> 0,5 la plus basse.inferieur a 0.5 car plus precis semble correct au vu des derniers tests
+
+Resultats du run C :
+┌───────────┬─────────┬───────────┬────────────────────────────────────────────┐
+│   Seuil   │ DER std │ Confusion │ Locuteurs dans aisvi (8 dans la référence) │
+├───────────┼─────────┼───────────┼────────────────────────────────────────────┤
+│ 0,3       │ 3,38 %  │ 1,47      │ 7 (deux voix fusionnées à tort)            │
+├───────────┼─────────┼───────────┼────────────────────────────────────────────┤
+│ 0,4 à 0,7 │ 3,25 %  │ 1,34      │ 8                                          │
+└───────────┴─────────┴───────────┴────────────────────────────────────────────┘
+
+Découverte du principe de : seuil bas donne deux locuteurs fusionnées
+Choix pour le seuil de 0,5 
+
+Run D : 
+1. atgpi (1 seul vrai locuteur, 2 trouvés au run B) : combien de locuteurs trouvés maintenant ? --> 1
+2. La confusion globale (1,34 au run B) : elle baisse beaucoup (vers 0,69, le niveau du fichier entier), un peu, ou pas du tout ? Indice : combien de secondes de parole sont en jeu dans ces petits bouts de fin, sur 39 min d'audio ? --> baisse beaucoup car les denrieres secondes d'un fichier restaient le porbleme majeur
