@@ -27,7 +27,7 @@ import numpy as np
 import soundfile as sf
 import torch
 from dotenv import load_dotenv
-from pyannote.audio import Pipeline
+from pyannote.audio import Model, Pipeline
 from pyannote.core import Annotation, Segment
 
 parser = argparse.ArgumentParser(description="Diarisation pyannote par paquets")
@@ -39,17 +39,26 @@ parser.add_argument("--seuil", type=float, default=0.5, help="similarité cosinu
 parser.add_argument("--fusion", type=float, default=0.0,
                     help="dernier paquet collé au précédent s'il dure moins de N s (0 = jamais, comportement du run B)")
 parser.add_argument("--modele", default="pyannote/speaker-diarization-community-1")
+parser.add_argument("--segmentation", default=None,
+                    help="checkpoint .ckpt d'une segmentation fine-tunée (ex. models/finetune_sdm_2026-11-11/segmentation.ckpt)")
 args = parser.parse_args()
 
-nom = f"paquets_{args.paquet:.0f}s_{args.seuil}" + (f"_fusion{args.fusion:.0f}" if args.fusion else "")
+# Étiquette du modèle de segmentation : le cache et les sorties d'un modèle ne doivent jamais servir à un autre
+etiquette = f"_seg-{Path(args.segmentation).parent.name}" if args.segmentation else ""
+nom = f"paquets_{args.paquet:.0f}s_{args.seuil}" + (f"_fusion{args.fusion:.0f}" if args.fusion else "") + etiquette
 sortie = Path(args.sortie or f"outputs/{nom}")
 os.makedirs(sortie, exist_ok=True)
-cache = Path(f"outputs/cache_paquets_{args.paquet:.0f}s")  # résultats pyannote bruts, par fichier
+cache = Path(f"outputs/cache_paquets_{args.paquet:.0f}s{etiquette}")  # résultats pyannote bruts, par paquet
 os.makedirs(cache, exist_ok=True)
 fichiers = sorted(Path(args.audio).glob("*.wav"))[: args.limite]
 
 load_dotenv()
 pipeline = Pipeline.from_pretrained(args.modele, token=os.getenv("HF_TOKEN"))  # chargé même si tout est en cache : plus simple
+if args.segmentation:
+    # Même architecture, nouveaux poids : on remplace seulement les poids du réseau de segmentation
+    poids = Model.from_pretrained(args.segmentation).state_dict()
+    pipeline._segmentation.model.load_state_dict(poids)
+    print(f"Segmentation remplacée par {args.segmentation}")
 
 
 def cosinus(a, b):

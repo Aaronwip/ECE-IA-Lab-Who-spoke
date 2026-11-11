@@ -1,0 +1,15 @@
+{
+  "mode": "test",
+  "config": "sdm",
+  "lr": 0.0001,
+  "reunions_train": 8,
+  "heures_train": 4.9,
+  "reunions_val": 6,
+  "heures_val": 3.5,
+  "epoques": 1,
+  "duree_min": 1.2,
+  "metrique": "DiarizationErrorRate",
+  "avant": 0.2002,
+  "meilleur": 0.2038,
+  "fichier": "meilleur-epoch=00.ckpt"
+}

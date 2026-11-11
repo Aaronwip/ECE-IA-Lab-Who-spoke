@@ -1,0 +1,1 @@
+{"repos": [{"repoId": "pyannote/speaker-diarization-community-1", "repoType": "model", "commitHash": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee", "filePaths": ["segmentation/pytorch_model.bin"]}]}

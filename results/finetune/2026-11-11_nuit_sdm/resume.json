@@ -1,0 +1,15 @@
+{
+  "mode": "nuit",
+  "config": "sdm",
+  "lr": 0.0001,
+  "reunions_train": 134,
+  "heures_train": 79.7,
+  "reunions_val": 18,
+  "heures_val": 9.7,
+  "epoques": 12,
+  "duree_min": 114.2,
+  "metrique": "DiarizationErrorRate",
+  "avant": 0.1952,
+  "meilleur": 0.1946,
+  "fichier": "meilleur-epoch=06.ckpt"
+}

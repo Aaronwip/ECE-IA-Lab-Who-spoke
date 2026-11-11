@@ -231,3 +231,7 @@ outputs/
 *.opus
 *.zip
 *.part
+
+# Modèles entraînés (trop lourds pour Git, téléchargés depuis Kaggle)
+models/
+*.ckpt
