@@ -29,7 +29,8 @@ Objectif : répondre à « qui parle, et quand ? » sur des conversations jamais
 ## Données
 - VoxConverse : régler sur `dev` (20-30 fichiers pour itérer), mesurer sur `test`.
 - AMI : découpage officiel par réunion.
-- Simsamu (FR) : test uniquement, jamais pour régler.
+- Simsamu (FR, 8 kHz) : découpage par séance (décision du 12/11, pour le fine-tuning en français) :
+  train = `dj_2022` + `dj_mai`, validation = `dj_2023`, test = `reu` (jamais pour régler).
 - Enregistrements personnels consentis : autorisés pour l'entraînement (accord du mentor le 06/11, décision du 10/11).
   Le test se fait sur d'autres enregistrements, jamais vus à l'entraînement (autres personnes ou autres séances).
 
