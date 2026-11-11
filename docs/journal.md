@@ -70,3 +70,45 @@ Choix pour le seuil de 0,5
 Run D : 
 1. atgpi (1 seul vrai locuteur, 2 trouvés au run B) : combien de locuteurs trouvés maintenant ? --> 1
 2. La confusion globale (1,34 au run B) : elle baisse beaucoup (vers 0,69, le niveau du fichier entier), un peu, ou pas du tout ? Indice : combien de secondes de parole sont en jeu dans ces petits bouts de fin, sur 39 min d'audio ? --> baisse beaucoup car les denrieres secondes d'un fichier restaient le porbleme majeur
+
+Resultats et analyse : le run D nous odnne des résultats interessants car nous decidons de garder un seuil de 0,5, faire en sorte de fusionner les dernieres trames faisant <10s et de prendre des paquets de 60s. Nosu partons donc avec les réglages suivants pour le démo.
+
+KAggle test 1 : 
+Métrique suivie : DiarizationErrorRate (min) | avant : 0.2002
+"mode": "test",
+    "config": "sdm",
+    "lr": 0.0001,
+    "reunions_train": 8,
+    "heures_train": 4.9,
+    "reunions_val": 6,
+    "heures_val": 3.5,
+    "epoques": 1,
+    "duree_min": 1.3,
+    "metrique": "DiarizationErrorRate",
+    "avant": 0.2002,
+    "meilleur": 0.2052,
+    "fichier": "meilleur-epoch=00.ckpt"
+
+    Résultats du test de nuit 11/11 : 
+    12 epochs, -0,0006 mais une courbe finalement plate oscillant d'epoch en epoch. L'explication la plus probable est celle évoquée hier : AMI faisait déjà partie des données d'entraînement du modèle de segmentation de pyannote. Le réentraîner sur AMI, c'est lui remontrer ce qu'il a déjà appris. Il était déjà à son meilleur niveau sur ce type de données.
+    (0,1952 → 0,1946, dans le bruit)
+
+    Run E : 
+
+┌─────────────────────┬─────────────────┬───────────────────────┬──────────────┐
+│                     │ Run D (origine) │ Run E (fine-tuné AMI) │    Écart     │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ DER standard        │ 2,99            │ 2,99                  │ 0            │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ – parole ratée      │ 1,26            │ 0,82                  │ −0,44        │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ – fausse alerte     │ 0,63            │ 1,03                  │ +0,40        │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ – confusion         │ 1,09            │ 1,14                  │ +0,05        │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ DER strict          │ 6,02            │ 6,21                  │ +0,19        │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ JER                 │ 16,75           │ 17,88                 │ +1,1         │
+├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
+│ Paquet le plus lent │ 0,63            │ 0,65                  │ même vitesse │
+└─────────────────────┴─────────────────┴───────────────────────┴──────────────┘
