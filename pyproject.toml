@@ -10,6 +10,7 @@ dependencies = [
     "matplotlib>=3.11.2",
     "pyannote-audio>=4.0.7",
     "pyannote-metrics>=4.2.0",
+    "pyarrow>=26.0.1",
     "python-dotenv>=1.2.4",
     "scikit-learn>=1.9.1",
     "soundfile>=0.14.0",
