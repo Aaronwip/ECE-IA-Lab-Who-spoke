@@ -1,4 +1,4 @@
-"""Calcule les statistiques des corpus et les écrit dans docs/corpus.md.
+"""Calcule les statistiques des corpus et les écrit dans docs/fiche_corpus.md.
 
 Les chiffres sont insérés entre les marqueurs <!-- STATS:debut --> et <!-- STATS:fin --> :
 relancer le script met à jour les tableaux sans toucher au texte écrit à la main autour.
@@ -54,8 +54,8 @@ def stats_jeu(dossier_rttm, dossier_wav, seulement_avec_audio=False):
     }
 
 
-def ligne(nom, s, identites_globales):
-    distincts = str(s["labels_distincts"]) if identites_globales else "n/a (labels locaux)"
+def ligne(nom, s, identites_globales, sans_identite="n/a (labels locaux)"):
+    distincts = str(s["labels_distincts"]) if identites_globales else sans_identite
     audio = f"{s['heures_audio']:.1f}" if s["avec_audio"] else "—"
     return (f"| {nom} | {s['fichiers']} | {s['avec_audio']} | {audio} | {s['heures_parole']:.1f} | "
             f"{s['chevauchement_pct']:.1f} | {s['loc_min']} / {s['loc_med']:g} / {s['loc_max']} | {distincts} |")
@@ -77,15 +77,22 @@ def tableau(args):
     if Path(args.voxconverse_rttm).exists():
         s = stats_jeu(args.voxconverse_rttm, args.voxconverse_wav)
         lignes.append(ligne("VoxConverse dev", s, False))
+    # Simsamu : les labels sont des RÔLES (medecin, patient), pas des personnes
+    for partition, seance in [("validation", "dj_2023"), ("test", "reu")]:
+        dossier = Path(args.simsamu) / partition
+        if (dossier / "rttm").exists():
+            s = stats_jeu(dossier / "rttm", dossier / "audio")
+            lignes.append(ligne(f"Simsamu {partition} ({seance})", s, False, "n/a (rôles)"))
     return "\n".join(entete + lignes)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Statistiques des corpus -> docs/corpus.md")
+    parser = argparse.ArgumentParser(description="Statistiques des corpus -> docs/fiche_corpus.md")
     parser.add_argument("--ami", default="data/raw/ami")
     parser.add_argument("--voxconverse-rttm", default="data/raw/dev")
     parser.add_argument("--voxconverse-wav", default="data/raw/audio")
-    parser.add_argument("--doc", default="docs/corpus.md")
+    parser.add_argument("--simsamu", default="data/raw/simsamu")
+    parser.add_argument("--doc", default="docs/fiche_corpus.md")
     args = parser.parse_args()
 
     texte_stats = tableau(args)
