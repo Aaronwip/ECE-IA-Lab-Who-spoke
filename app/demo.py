@@ -3,10 +3,12 @@
 Lancement :
     uv run python app/demo.py      puis ouvrir http://127.0.0.1:7860
 
-On charge un audio. Il est traité paquet par paquet (60 s), exactement comme dans le
-run D (scripts/run_paquets.py, mêmes fonctions de src/whospoke/paquets.py) :
-la timeline se remplit après chaque paquet, comme elle le ferait en direct.
-On peut cliquer sur un segment du tableau pour l'écouter, puis exporter en RTTM et JSON.
+Onglet « Fichier » : on charge un audio. Il est traité paquet par paquet (60 s), exactement
+comme dans le run D (scripts/run_paquets.py, mêmes fonctions de src/whospoke/paquets.py) :
+la timeline se remplit après chaque paquet.
+Onglet « Direct (micro) » : on parle, un paquet part toutes les 60 s PENDANT l'enregistrement
+(src/whospoke/direct.py), et la timeline se remplit au fil de l'eau.
+Dans les deux cas : clic sur un segment du tableau pour l'écouter, export RTTM et JSON.
 
 Gradio : bibliothèque Python qui fabrique une page web (chargement de fichier, micro,
 lecteur audio, téléchargement) sans écrire de HTML ni de JavaScript.
@@ -24,6 +26,7 @@ import numpy as np
 from matplotlib.figure import Figure
 from pyannote.core import Annotation
 
+from whospoke.direct import Direct
 from whospoke.paquets import Relieur, bornes_paquets, charger_pipeline, diariser_paquet, placer
 
 # Réglages retenus après l'ablation (run D, results/runs.csv)
@@ -137,25 +140,110 @@ def ecouter(audio, evt: gr.SelectData):
     return SR, (extrait * 32767).astype(np.int16)  # le lecteur attend des entiers 16 bits
 
 
+# ---------------- Direct au micro (logique dans src/whospoke/direct.py) ----------------
+# Démo locale pour une seule personne : un seul objet Direct, partagé.
+direct = Direct(pipeline, PAQUET, SEUIL, minimum=FUSION)
+affichage = {"actif": False, "cle": None}  # évite de redessiner si rien n'a changé
+
+
+def minsec(s):
+    return f"{int(s // 60)} min {int(s % 60):02d} s"
+
+
+def statut_direct(e):
+    morceaux = [f"**Reçu** : {minsec(e['recu'])} · **analysé** : {minsec(e['analyse'])}"]
+    if e["en_cours"] is not None:
+        morceaux.append(f"paquet à partir de {minsec(e['en_cours'])} en calcul")
+    if e["attente"]:
+        morceaux.append(f"{e['attente']} paquet(s) en attente")
+    if e["calculs"]:
+        duree, calcul = e["calculs"][-1]
+        morceaux.append(f"dernier paquet : {calcul:.0f} s de calcul pour {duree:.0f} s ({calcul / duree:.2f} x)")
+    morceaux.append(f"{len(e['resultat'].labels())} locuteur(s)")
+    if e["erreur"]:
+        morceaux.append("**Erreur dans le calcul, voir le terminal**")
+    return " · ".join(morceaux)
+
+
+def demarrer():
+    direct.reinitialiser()
+    affichage.update(actif=True, cle=None)
+    return (None, [], f"Enregistrement en cours. Premier résultat après {PAQUET:.0f} s de parole "
+            "+ environ 40 s de calcul.", None, None)
+
+
+def recevoir(morceau):
+    """Toutes les 0,5 s : le navigateur envoie le dernier morceau du micro."""
+    if morceau is not None:
+        sr, donnees = morceau
+        direct.ajouter(sr, donnees)
+
+
+def rafraichir():
+    """Toutes les 3 s : redessine la timeline si quelque chose a changé."""
+    e = direct.etat()
+    cle = (int(e["recu"]), len(e["calculs"]), e["en_cours"])
+    if not affichage["actif"] or e["recu"] == 0 or cle == affichage["cle"]:
+        return gr.skip(), gr.skip()
+    affichage["cle"] = cle
+    return dessiner(e["resultat"], max(e["recu"], 1), e["analyse"]), statut_direct(e)
+
+
+def finir():
+    """Arrêt du micro : on analyse le dernier morceau, puis tableau, écoute et export comme pour un fichier."""
+    affichage["actif"] = False
+    yield gr.skip(), gr.skip(), "Arrêt : analyse des derniers paquets en cours...", gr.skip(), gr.skip()
+    direct.terminer()
+    e = direct.etat()
+    resultat, duree = e["resultat"], len(e["audio"]) / SR
+    if not len(resultat):
+        yield gr.skip(), [], f"Rien d'analysé : il faut au moins {FUSION:.0f} s d'enregistrement.", None, None
+        return
+    resultat.uri = "direct_" + time.strftime("%Y%m%d_%H%M%S")
+    pire = max(calcul / d for d, calcul in e["calculs"])
+    statut = (f"**Terminé** : {minsec(e['recu'])} enregistrées, {len(resultat.labels())} locuteur(s). "
+              f"Paquet le plus lent : {pire:.2f} x sa durée ({'direct tenu' if pire < 1 else 'trop lent'}). "
+              "Clique sur une ligne du tableau pour écouter le segment.")
+    yield dessiner(resultat, duree, duree), tableau(resultat), statut, e["audio"], exporter(resultat, duree)
+
+
+def zone_resultats():
+    """Statut, timeline, tableau des tours, lecteur et export : identiques dans les deux onglets."""
+    statut = gr.Markdown()
+    timeline = gr.Plot(label="Timeline des locuteurs (zone grise : pas encore analysée)")
+    with gr.Row():
+        segments = gr.Dataframe(headers=["locuteur", "début (s)", "fin (s)", "durée (s)"],
+                                interactive=False, label="Tours de parole (clic = écouter)", max_height=350)
+        with gr.Column():
+            extrait = gr.Audio(label="Segment sélectionné", interactive=False, autoplay=True)
+            fichiers = gr.File(label="Export RTTM / JSON", file_count="multiple")
+    audio_charge = gr.State()  # l'audio 16 kHz, gardé pour l'écoute des segments
+    segments.select(ecouter, inputs=audio_charge, outputs=extrait)
+    return [timeline, segments, statut, audio_charge, fichiers]
+
+
 with gr.Blocks(title="Who Spoke?") as demo:
     gr.Markdown("# Who Spoke? — qui parle, et quand ?\n"
                 f"pyannote community-1, traité par paquets de {PAQUET:.0f} s "
                 f"(seuil {SEUIL}, fusion du dernier paquet < {FUSION:.0f} s).")
-    with gr.Row():
-        entree = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Audio")
-        with gr.Column():
-            bouton = gr.Button("Analyser", variant="primary")
-            fichiers = gr.File(label="Export RTTM / JSON", file_count="multiple")
-    statut = gr.Markdown()
-    timeline = gr.Plot(label="Timeline des locuteurs")
-    with gr.Row():
-        segments = gr.Dataframe(headers=["locuteur", "début (s)", "fin (s)", "durée (s)"],
-                                interactive=False, label="Tours de parole (clic = écouter)", max_height=350)
-        extrait = gr.Audio(label="Segment sélectionné", interactive=False, autoplay=True)
-    audio_charge = gr.State()  # l'audio 16 kHz, gardé pour l'écoute des segments
+    with gr.Tab("Fichier"):
+        with gr.Row():
+            entree = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Audio")
+            bouton = gr.Button("Analyser", variant="primary", scale=0)
+        sorties_fichier = zone_resultats()
+        bouton.click(analyser, inputs=entree, outputs=sorties_fichier)
 
-    bouton.click(analyser, inputs=entree, outputs=[timeline, segments, statut, audio_charge, fichiers])
-    segments.select(ecouter, inputs=audio_charge, outputs=extrait)
+    with gr.Tab("Direct (micro)"):
+        gr.Markdown(f"Clique sur le micro et parle : un paquet part toutes les {PAQUET:.0f} s pendant "
+                    "l'enregistrement, et la timeline se remplit au fil de l'eau. Arrête l'enregistrement pour "
+                    "analyser la fin, écouter les segments et exporter.")
+        micro = gr.Audio(sources=["microphone"], streaming=True, type="numpy", label="Micro")
+        sorties_direct = zone_resultats()
+        timeline_direct, _, statut_direct_md, _, _ = sorties_direct
+        micro.start_recording(demarrer, outputs=sorties_direct)
+        micro.stream(recevoir, inputs=micro, outputs=None, stream_every=0.5)
+        micro.stop_recording(finir, outputs=sorties_direct)
+        gr.Timer(3.0).tick(rafraichir, outputs=[timeline_direct, statut_direct_md])
 
 if __name__ == "__main__":
     demo.launch()
