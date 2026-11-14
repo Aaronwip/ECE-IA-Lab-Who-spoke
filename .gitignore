@@ -235,3 +235,7 @@ outputs/
 # Modèles entraînés (trop lourds pour Git, téléchargés depuis Kaggle)
 models/
 *.ckpt
+
+# Fichiers locaux de l'assistant et de l'éditeur (non utiles au projet)
+AGENTS.md
+.vscode/
