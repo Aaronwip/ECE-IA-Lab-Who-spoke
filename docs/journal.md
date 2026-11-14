@@ -112,3 +112,58 @@ Métrique suivie : DiarizationErrorRate (min) | avant : 0.2002
 ├─────────────────────┼─────────────────┼───────────────────────┼──────────────┤
 │ Paquet le plus lent │ 0,63            │ 0,65                  │ même vitesse │
 └─────────────────────┴─────────────────┴───────────────────────┴──────────────┘
+
+Test de la nuit sur simsamu 12/11 : 
+DER de validation en baisse de plus de 0,03. Meilleur perf dans la tranche entre 5e et la 15e 
+
+Run F  (community-1 sur dj_2023) : 
+Résultat (12/11) : DER strict 20,30 (raté 14,13 / FA 4,43 / conf. 1,74), DER standard 13,22 (raté 9,06 / FA 2,98 / conf. 1,17), JER 23,73.
+→ Sur du français au téléphone, pyannote fait 4 fois plus d'erreurs que sur VoxConverse (2,99). L'erreur dominante est la parole ratée : c'est le travail de la segmentation.
+
+Run G  (modèle Simsamu sur dj_2023) :
+Paris : simulation sur simsamu pour validation. Peu d'amelioration mais DER en baisse 
+Résultat (14/11) :
+
+┌─────────────────────┬──────────────────┬────────────────────────┬────────┐
+│ Simsamu dj_2023     │ Run F (origine)  │ Run G (fine-tuné SAMU) │ Écart  │
+├─────────────────────┼──────────────────┼────────────────────────┼────────┤
+│ DER standard        │ 13,22            │ 6,38                   │ −6,84  │
+│ – parole ratée      │ 9,06             │ 3,32                   │ −5,74  │
+│ – fausse alerte     │ 2,98             │ 0,43                   │ −2,55  │
+│ – confusion         │ 1,17             │ 2,63                   │ +1,46  │
+│ DER strict          │ 20,30            │ 11,62                  │ −8,68  │
+│ JER                 │ 23,73            │ 15,82                  │ −7,91  │
+│ Paquet le plus lent │ —                │ 0,62                   │        │
+└─────────────────────┴──────────────────┴────────────────────────┴────────┘
+
+→ Pari raté dans le bon sens : le DER est divisé par deux, pas « peu d'amélioration ».
+  Le gain vient de la parole ratée et des fausses alertes (la segmentation), la confusion augmente un peu
+  (surtout dj_2023_covid : 11,9 % de confusion en strict).
+→ Limite : dj_2023 a servi à choisir l'époque du fine-tuning, ce score est donc un peu optimiste.
+  La mesure honnête sera sur le test `reu`.
+
+Run H (modèle Simsamu sur VoxConverse dev-10) :
+DER strict < 11,62 % 
+DER Standard < 6,38%
+Meilleures performance overall 
+Résultat (14/11) :
+
+┌─────────────────────┬─────────────────┬────────────────────────┬────────┐
+│ VoxConverse dev-10  │ Run D (origine) │ Run H (fine-tuné SAMU) │ Écart  │
+├─────────────────────┼─────────────────┼────────────────────────┼────────┤
+│ DER standard        │ 2,99            │ 4,69                   │ +1,70  │
+│ – parole ratée      │ 1,26            │ 2,45                   │ +1,19  │
+│ – fausse alerte     │ 0,63            │ 0,79                   │ +0,16  │
+│ – confusion         │ 1,09            │ 1,45                   │ +0,36  │
+│ DER strict          │ 6,02            │ 8,89                   │ +2,87  │
+│ JER                 │ 16,75           │ 21,61                  │ +4,86  │
+│ Paquet le plus lent │ 0,63            │ 0,65                   │ même   │
+└─────────────────────┴─────────────────┴────────────────────────┴────────┘
+
+→ Pari à moitié juste : les chiffres sont bien sous ceux de G, mais le modèle est MOINS bon que l'original
+  sur l'anglais (+1,70 point). Ce n'est pas « meilleur overall ».
+→ C'est de l'oubli (catastrophic forgetting) : en s'adaptant au français au téléphone, le modèle perd
+  une partie de ce qu'il savait faire ailleurs. Fichiers les plus touchés : azisu (raté 12,9 %), ahnss, aufkn.
+→ Décision à prendre : quel modèle pour la démo ? Elle se fera sur des enregistrements inconnus,
+  ni téléphone 8 kHz, ni débat télé anglais. Il faut trancher sur une validation proche de la démo
+  (enregistrements personnels en français au micro), jamais sur le test.
