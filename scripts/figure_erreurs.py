@@ -1,9 +1,9 @@
 """Graphique A : erreurs par fichier (parole ratée, fausse alerte, confusion) en barres empilées.
 
-Lit le CSV par fichier écrit par eval/score.py. Scores en DER strict (collar 0).
+Lit le CSV par fichier écrit par whospoke.evaluate (option --csv). Scores en DER strict (collar 0).
 
 Usage :
-    uv run python eval/score.py --ref data/raw/dev --hyp outputs/baseline_mfcc_oracle --csv results/scores_mfcc_oracle.csv
+    uv run python -m whospoke.evaluate outputs/baseline_mfcc_oracle --approche mfcc-oracle --jeu voxconverse-dev-10 --csv results/scores_mfcc_oracle.csv
     uv run python scripts/figure_erreurs.py results/scores_mfcc_oracle.csv --titre mfcc-oracle --sortie results/figures/erreurs_mfcc_oracle.png
 """
 import argparse
@@ -24,7 +24,7 @@ COMPOSANTES = [
 ]
 
 parser = argparse.ArgumentParser(description="Barres empilées des erreurs par fichier")
-parser.add_argument("scores", help="CSV par fichier écrit par eval/score.py")
+parser.add_argument("scores", help="CSV par fichier écrit par whospoke.evaluate --csv")
 parser.add_argument("--titre", required=True, help="nom de l'approche, affiché dans le titre")
 parser.add_argument("--sortie", required=True, help="image à écrire (.png)")
 args = parser.parse_args()

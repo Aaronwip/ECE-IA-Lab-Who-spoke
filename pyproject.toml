@@ -32,7 +32,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-# eval/ n'est pas un paquet Python : on l'ajoute au chemin pour que les tests puissent `import score`
-pythonpath = ["eval", "scripts"]
+# scripts/ n'est pas un paquet Python : on l'ajoute au chemin pour que les tests puissent importer ses scripts
+pythonpath = ["scripts"]
 testpaths = ["tests"]
 filterwarnings = ["ignore:.*approximated.*:UserWarning"]

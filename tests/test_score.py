@@ -1,11 +1,11 @@
-"""Tests du harnais d'évaluation (eval/score.py) sur de petits RTTM construits à la main.
+"""Tests du harnais d'évaluation (src/whospoke/evaluate.py) sur de petits RTTM construits à la main.
 
 Les valeurs attendues sont calculées à la main dans les commentaires : si un test casse,
 c'est soit le code, soit notre compréhension de la métrique qui est fausse.
 """
 import pytest
 
-import score
+from whospoke import evaluate
 
 
 def ecrire_rttm(chemin, segments):
@@ -22,7 +22,7 @@ def scorer_un(tmp_path, ref, hyp, collar=0.25):
     (tmp_path / "hyp").mkdir()
     chemin_ref = ecrire_rttm(tmp_path / "ref" / "f.rttm", ref)
     chemin_hyp = ecrire_rttm(tmp_path / "hyp" / "f.rttm", hyp)
-    lignes, _, _ = score.scorer([(chemin_ref, chemin_hyp)], collar)
+    lignes, _, _ = evaluate.scorer([(chemin_ref, chemin_hyp)], collar)
     return lignes[0]
 
 
@@ -84,8 +84,8 @@ def test_mode_dossier_moyenne_et_global(tmp_path):
     ecrire_rttm(tmp_path / "ref" / "b.rttm", [(0, 30, "A")])
     ecrire_rttm(tmp_path / "hyp" / "b.rttm", [(0, 15, "A")])
 
-    paires = score.apparier(tmp_path / "ref", tmp_path / "hyp")
-    lignes, moyenne, globale = score.scorer(paires)
+    paires = evaluate.apparier(tmp_path / "ref", tmp_path / "hyp")
+    lignes, moyenne, globale = evaluate.scorer(paires)
     assert [l["fichier"] for l in lignes] == ["a", "b"]
     # Moyenne simple : (0 % + 50 %) / 2 = 25 %
     assert moyenne["der_strict"] == pytest.approx(25)
@@ -99,10 +99,16 @@ def test_cli_ecrit_le_csv(tmp_path):
     ecrire_rttm(tmp_path / "ref" / "a.rttm", [(0, 10, "A")])
     ecrire_rttm(tmp_path / "hyp" / "a.rttm", [(0, 10, "A")])
     sortie = tmp_path / "scores.csv"
-    score.main(["--ref", str(tmp_path / "ref"), "--hyp", str(tmp_path / "hyp"), "--csv", str(sortie)])
+    runs = tmp_path / "runs.csv"
+    evaluate.main([str(tmp_path / "hyp"), "--references", str(tmp_path / "ref"), "--approche", "test",
+                   "--jeu", "test", "--runs", str(runs), "--csv", str(sortie)])
     contenu = sortie.read_text(encoding="utf-8").splitlines()
     assert contenu[0].startswith("fichier,der_strict")
     assert [l.split(",")[0] for l in contenu[1:]] == ["a", "MOYENNE", "GLOBAL"]
+    # Et une ligne a été ajoutée au CSV des runs (en-tête + 1 ligne), DER nul
+    lignes_runs = runs.read_text(encoding="utf-8").splitlines()
+    assert lignes_runs[0].startswith("date,approche")
+    assert len(lignes_runs) == 2 and ",test,defaut,test,1,0.0," in lignes_runs[1]
 
 
 def test_reference_vide_est_ignoree(tmp_path):
@@ -113,5 +119,5 @@ def test_reference_vide_est_ignoree(tmp_path):
     ecrire_rttm(tmp_path / "hyp" / "vide.rttm", [(0, 5, "A")])
     ecrire_rttm(tmp_path / "ref" / "ok.rttm", [(0, 10, "A")])
     ecrire_rttm(tmp_path / "hyp" / "ok.rttm", [(0, 10, "A")])
-    lignes, _, _ = score.scorer(score.apparier(tmp_path / "ref", tmp_path / "hyp"))
+    lignes, _, _ = evaluate.scorer(evaluate.apparier(tmp_path / "ref", tmp_path / "hyp"))
     assert [l["fichier"] for l in lignes] == ["ok"]
