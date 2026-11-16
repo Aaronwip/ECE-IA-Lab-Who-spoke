@@ -24,11 +24,13 @@ RACINE = Path("data/raw/simsamu")
 PARQUET = RACINE / "train-00000-of-00001.parquet"   # Simsamu n'a qu'un fichier, nommé « train » par HF
 PARTITIONS = {"validation": ("dj_2023_",), "test": ("reu_",)}
 
+# 1. Téléchargement (une seule fois) depuis Hugging Face
 if not PARQUET.exists():
     hf_hub_download("diarizers-community/simsamu", "data/train-00000-of-00001.parquet",
                     repo_type="dataset", local_dir=RACINE)
     (RACINE / "data" / PARQUET.name).rename(PARQUET)
 
+# 2. Lecture appel par appel (batch_size=1 : un seul enregistrement en mémoire à la fois)
 compte = {p: 0 for p in PARTITIONS}
 for lot in pq.ParquetFile(PARQUET).iter_batches(batch_size=1):
     ligne = lot.to_pylist()[0]
@@ -39,16 +41,19 @@ for lot in pq.ParquetFile(PARQUET).iter_batches(batch_size=1):
     for dossier in ["audio", "rttm"]:
         (RACINE / partition / dossier).mkdir(parents=True, exist_ok=True)
 
+    # 3. Audio : mono, 16 kHz, écrit en wav 16 bits
     audio, sr = sf.read(io.BytesIO(ligne["audio"]["bytes"]), dtype="float32")
     if audio.ndim > 1:
-        audio = audio.mean(axis=1)
+        audio = audio.mean(axis=1)   # stéréo -> mono : moyenne des deux canaux
     if sr != 16000:
         audio = resample_poly(audio, 16000, sr).astype("float32")
     sf.write(RACINE / partition / "audio" / f"{uri}.wav", audio, 16000, subtype="PCM_16")
+    # 4. Référence : une ligne RTTM par tour de parole (début, durée, locuteur)
     with open(RACINE / partition / "rttm" / f"{uri}.rttm", "w") as f:
         for debut, fin, locuteur in zip(ligne["timestamps_start"], ligne["timestamps_end"], ligne["speakers"]):
             f.write(f"SPEAKER {uri} 1 {debut:.3f} {fin - debut:.3f} <NA> <NA> {locuteur} <NA> <NA>\n")
     compte[partition] += 1
 
+# 5. Garde-fou : le découpage doit donner exactement 7 appels de validation et 9 de test
 print(compte)
 assert compte == {"validation": 7, "test": 9}, "découpage inattendu"

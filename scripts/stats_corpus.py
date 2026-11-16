@@ -55,6 +55,8 @@ def stats_jeu(dossier_rttm, dossier_wav, seulement_avec_audio=False):
 
 
 def ligne(nom, s, identites_globales, sans_identite="n/a (labels locaux)"):
+    """Une ligne du tableau Markdown pour un jeu. `identites_globales` : vrai si un même label
+    désigne la même personne d'un fichier à l'autre (AMI) ; sinon compter les labels n'a pas de sens."""
     distincts = str(s["labels_distincts"]) if identites_globales else sans_identite
     audio = f"{s['heures_audio']:.1f}" if s["avec_audio"] else "—"
     return (f"| {nom} | {s['fichiers']} | {s['avec_audio']} | {audio} | {s['heures_parole']:.1f} | "
@@ -62,6 +64,7 @@ def ligne(nom, s, identites_globales, sans_identite="n/a (labels locaux)"):
 
 
 def tableau(args):
+    """Construit le tableau Markdown complet : AMI (par partition), VoxConverse dev, Simsamu."""
     entete = [
         "| Jeu | Enregistrements annotés | Avec audio local | Heures d'audio local | Heures de parole annotée "
         "| Chevauchement (% de la parole) | Locuteurs par fichier (min / médiane / max) | Locuteurs distincts |",
@@ -98,6 +101,7 @@ def main():
     texte_stats = tableau(args)
     print(texte_stats)
 
+    # Remplace seulement ce qui se trouve entre les deux marqueurs de la fiche corpus
     doc = Path(args.doc)
     contenu = doc.read_text(encoding="utf-8")
     if DEBUT not in contenu or FIN not in contenu:
