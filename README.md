@@ -40,11 +40,16 @@ uv run python scripts/run_paquets.py --fusion 10          # système par paquets
 uv run python -m whospoke.evaluate outputs/paquets_60s_0.5_fusion10 --approche pyannote-paquets --jeu voxconverse-dev-10
 uv run pytest                                             # tests
 uv run python app/demo.py                                 # démo Gradio : http://127.0.0.1:7860
+uv run python app/serveur_theatre.py                      # Théâtre des voix : http://127.0.0.1:8000/app/theatre.html
 ```
 
 ## Structure
 - `src/whospoke/` : code partagé (lecture RTTM, baseline, paquets, évaluation DER/JER).
 - `scripts/` : téléchargement des données, lancement des runs, figures.
 - `app/demo.py` : démo (fichier ou micro, timeline, écoute des segments, export RTTM/JSON).
+- `app/theatre.html` : « Théâtre des voix », visualisation 3D (sphères, bandes référence / prédiction / erreurs, DER).
+  S'ouvre aussi par double-clic, avec les exemples de `app/exemples/` (les `.wav` ne sont pas versionnés).
+- `app/serveur_theatre.py` : sert cette page et calcule le RTTM d'un audio qui n'en a pas (même code que la démo).
+- `app/vendor/three.min.js` : Three.js r128 (licence MIT), copié en local pour une soutenance sans Internet.
 - `kaggle/` : notebook de fine-tuning. `results/` : runs, figures, résumés des entraînements.
 - `data/`, `outputs/`, `models/` : non versionnés (audio, prédictions, poids).

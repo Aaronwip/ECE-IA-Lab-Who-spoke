@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<!--
+  Théâtre des voix : visualisation 3D d'une diarisation (projet Who Spoke?).
+
+  UTILISATION 1 (avec le serveur : tout marche, y compris l'analyse d'un audio sans RTTM).
+  Depuis la racine du repo :
+      uv run python app/serveur_theatre.py
+  puis ouvrir  http://127.0.0.1:8000/app/theatre.html   (ajouter ?exemple=reu_ncb pour ouvrir un exemple)
+  ou, avec ses propres fichiers :
+      http://127.0.0.1:8000/app/theatre.html?audio=/data/raw/simsamu/test/audio/reu_ncb.wav&ref=/data/raw/simsamu/test/rttm/reu_ncb.rttm&a=/outputs/test_reu_origine/reu_ncb.rttm&b=/outputs/test_reu_simsamu/reu_ncb.rttm&nomA=Segmentation%20d%27origine&nomB=Fine-tun%C3%A9e%20Simsamu
+
+  UTILISATION 2 (sans serveur) : double-clic sur ce fichier, puis cliquer sur un des exemples de la
+  barre de gauche (dossier app/exemples/), ou déposer un audio et son RTTM. Sans serveur, la page
+  ne peut pas analyser un audio : elle affiche seulement une diarisation déjà calculée.
+
+  Touches : Espace = lecture/pause, F = plein écran, P = changer de prédiction, flèches = ±5 s.
+
+  Contrôle chiffré : l'attribut data-controle de la balise <body> contient les DER calculés par
+  la page (à comparer à pyannote.metrics, voir docs/resultats.md).
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Théâtre des voix</title>
+<style>
+  :root {
+    --fond: #07090f; --carte: rgba(16, 21, 33, 0.88); --bord: #2a3550;
+    --texte: #f2f5fb; --doux: #a9b4cc;
+    --rate: #ff4d4d; --fa: #ff9f1c; --conf: #b46bff;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--fond); color: var(--texte);
+    font: 20px/1.35 "Segoe UI", system-ui, sans-serif;
+    display: flex; overflow: hidden;             /* barre des fichiers à gauche, le reste à droite */
+  }
+  #principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .cache { display: none !important; }
+
+  /* --- scène 3D et ce qui flotte dessus --- */
+  #haut { flex: 1; min-height: 0; display: flex; }       /* scène à gauche, panneau à droite */
+  #scene { position: relative; flex: 1; min-width: 0; }
+  #scene canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+  #titre { position: absolute; left: 24px; top: 16px; pointer-events: none; }
+  #titre h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: 0.5px; }
+  #titre p { margin: 2px 0 0; color: var(--doux); font-size: 20px; }
+  #aide3d { position: absolute; left: 24px; bottom: 12px; color: var(--doux); font-size: 17px; pointer-events: none; }
+
+  #panneau {
+    width: 440px; flex: none; overflow-y: auto; padding: 18px 22px;
+    background: #0c111d; border-left: 1px solid var(--bord);
+  }
+  #modele { margin: 0 0 14px; color: var(--doux); font-size: 15px; line-height: 1.3; }
+  #panneau h2 { margin: 0 0 4px; font-size: 24px; }
+  #panneau table { width: 100%; border-collapse: collapse; font-size: 20px; }
+  #panneau th { text-align: right; color: var(--doux); font-weight: 600; padding: 2px 0; }
+  #panneau th small { display: block; font-weight: 400; font-size: 14px; }
+  #panneau td { padding: 4px 0; }
+  #panneau td + td { text-align: right; font-variant-numeric: tabular-nums; }
+  #panneau tr.der td { font-size: 34px; font-weight: 700; padding-bottom: 8px; }
+  #panneau tr.der td:first-child { font-size: 26px; }
+  #cumul { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--bord); }
+  #cumul b { float: right; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .jauge { clear: both; height: 10px; margin-top: 10px; background: #1b2438; border-radius: 5px; overflow: hidden; }
+  #jaugeCumul { height: 100%; width: 0; background: linear-gradient(90deg, var(--fa), var(--rate)); }
+  #sansRef { margin: 4px 0 0; color: var(--fa); font-size: 21px; }
+  .pastille { display: inline-block; width: 16px; height: 16px; border-radius: 4px; margin-right: 8px; vertical-align: -1px; }
+
+  /* --- légende, bandes, commandes --- */
+  #legende {
+    display: flex; flex-wrap: wrap; gap: 6px 26px; align-items: center;
+    padding: 8px 24px; border-top: 1px solid var(--bord); font-size: 19px;
+  }
+  #legende .sep { color: var(--doux); }
+  #bandes { display: block; width: 100%; cursor: pointer; }
+  #commandes {
+    display: flex; align-items: center; gap: 16px; padding: 10px 24px 12px;
+    border-top: 1px solid var(--bord);
+  }
+  button {
+    font: inherit; color: var(--texte); background: #18203a; border: 1px solid var(--bord);
+    border-radius: 10px; padding: 8px 18px; cursor: pointer;
+  }
+  button:hover { background: #222c4d; }
+  #lecture { min-width: 150px; font-weight: 700; background: #2456c9; border-color: #2456c9; }
+  #horloge { font-size: 24px; font-variant-numeric: tabular-nums; min-width: 150px; }
+  #bascule { display: flex; border: 1px solid var(--bord); border-radius: 10px; overflow: hidden; }
+  #bascule button { border: 0; border-radius: 0; background: transparent; color: var(--doux); }
+  #bascule button.actif { background: #f2f5fb; color: #07090f; font-weight: 700; }
+  #commandes .pousse { flex: 1; }
+  #commandes .touches { color: var(--doux); font-size: 16px; }
+
+  /* --- barre des fichiers, à gauche --- */
+  #fichiers {
+    width: 370px; flex: none; overflow-y: auto; padding: 16px 18px;
+    background: #0c111d; border-right: 1px solid var(--bord);
+  }
+  #fichiers h2 { margin: 0 0 10px; font-size: 24px; }
+  #fichiers h2 + p { margin: -6px 0 10px; color: var(--doux); font-size: 16px; }
+  #exemples { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+  #exemples button { text-align: left; }
+  #exemples button.actif { background: #f2f5fb; color: #07090f; font-weight: 700; }
+  .zone { border: 2px dashed var(--bord); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+  .zone.survol { border-color: #4aa8ff; background: rgba(74, 168, 255, 0.12); }
+  .zone.charge { border-style: solid; border-color: #3ddc97; }
+  .zone strong { display: block; margin-bottom: 6px; }
+  .zone strong em { font-weight: 400; font-style: normal; color: var(--doux); font-size: 16px; }
+  .zone input[type=text] {
+    font: inherit; width: 100%; color: var(--texte); background: #0d1220;
+    border: 1px solid var(--bord); border-radius: 8px; padding: 4px 10px; margin-bottom: 8px;
+  }
+  .zone .info { display: block; color: var(--doux); font-size: 15px; margin-top: 6px; word-break: break-all; }
+  #message { color: var(--fa); font-size: 17px; }
+  #analyser { margin-top: 8px; background: #2456c9; border-color: #2456c9; font-weight: 700; }
+  #analyser:disabled { opacity: 0.7; cursor: wait; }
+  details { margin-bottom: 12px; }
+  details summary { cursor: pointer; color: var(--doux); margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<aside id="fichiers">
+  <div id="blocExemples" class="cache">
+    <h2>Exemples</h2>
+    <p>Trois enregistrements du test Simsamu, prêts à l'emploi.</p>
+    <div id="exemples"></div>
+  </div>
+  <h2>Mes fichiers</h2>
+  <p>Glisser un fichier sur une case, ou cliquer sur « Choisir ». Un nouvel audio démarre une
+     nouvelle piste : les RTTM de la piste précédente sont effacés.</p>
+  <div class="zone" data-role="audio"><strong>Audio</strong>
+    <input type="text" value="" placeholder="Titre affiché">
+    <button type="button">Choisir…</button><span class="info"></span>
+    <input type="file" class="cache" accept="audio/*"></div>
+  <div class="zone" data-role="a"><strong>RTTM <em>(facultatif)</em></strong>
+    <input type="text" value="Prédiction">
+    <button type="button">Choisir…</button><span class="info"></span>
+    <input type="file" class="cache" accept=".rttm,.txt">
+    <button type="button" id="analyser" class="cache">Analyser l'audio</button></div>
+  <details>
+    <summary>Comparer (facultatif)</summary>
+    <div class="zone" data-role="ref"><strong>Référence, RTTM</strong>
+      <input type="text" value="Référence">
+      <button type="button">Choisir…</button><span class="info"></span>
+      <input type="file" class="cache" accept=".rttm,.txt"></div>
+    <div class="zone" data-role="b"><strong>Seconde prédiction, RTTM</strong>
+      <input type="text" value="Prédiction B">
+      <button type="button">Choisir…</button><span class="info"></span>
+      <input type="file" class="cache" accept=".rttm,.txt"></div>
+  </details>
+  <button type="button" id="effacer">Tout effacer</button>
+  <p id="message"></p>
+</aside>
+
+<div id="principal">
+<div id="haut">
+<div id="scene">
+  <div id="titre"><h1>Théâtre des voix</h1><p id="sousTitre">Qui parle, et quand ?</p></div>
+  <div id="aide3d">Sphère allumée = le système entend ce locuteur<span id="aideAnneau"> · anneau au sol = l'annotation humaine</span></div>
+</div>
+
+  <aside id="panneau" class="cache">
+    <h2 id="titrePred"></h2>
+    <p id="modele"></p>
+    <table id="tableDer">
+      <tr><th></th><th>Strict<small>collar 0</small></th><th>Standard<small>collar ±0,25 s</small></th></tr>
+      <tr class="der"><td>DER</td><td id="v0"></td><td id="v4"></td></tr>
+      <tr><td><i class="pastille" style="background:var(--rate)"></i>Parole ratée</td><td id="v1"></td><td id="v5"></td></tr>
+      <tr><td><i class="pastille" style="background:var(--fa)"></i>Fausse alerte</td><td id="v2"></td><td id="v6"></td></tr>
+      <tr><td><i class="pastille" style="background:var(--conf)"></i>Confusion</td><td id="v3"></td><td id="v7"></td></tr>
+    </table>
+    <div id="cumul">Erreur cumulée jusqu'à maintenant <b id="vCumul"></b>
+      <div class="jauge"><div id="jaugeCumul"></div></div>
+    </div>
+    <p id="sansRef" class="cache">Pas d'annotation : erreurs non calculables.</p>
+  </aside>
+</div>
+
+<div id="legende"></div>
+<canvas id="bandes"></canvas>
+
+<div id="commandes">
+  <button type="button" id="lecture">▶ Lecture</button>
+  <span id="horloge">0:00 / 0:00</span>
+  <div id="bascule" class="cache"><button type="button" data-pred="a"></button><button type="button" data-pred="b"></button></div>
+  <span class="pousse"></span>
+  <span class="touches">Espace : lecture · P : prédiction · F : plein écran</span>
+  <button type="button" id="ouvrir">Fichiers</button>
+</div>
+</div>
+
+<!-- Three.js en local : la page marche sans Internet. Balises <script> classiques (pas de modules ES),
+     sinon le navigateur refuse de charger le code quand la page est ouverte par double-clic. -->
+<script src="vendor/three.min.js"></script>
+<!-- Exemples intégrés (texte des RTTM). Si le dossier manque, la page marche quand même. -->
+<script src="exemples/exemples.js"></script>
+<script>
+"use strict";
+
+/* =====================================================================================
+   1. CALCUL : lecture des RTTM, association des locuteurs, erreurs et DER
+   ===================================================================================== */
+
+var PAS = 0.01;       // durée d'une trame : 10 ms
+var COLLAR = 0.25;    // marge ignorée de chaque côté d'une frontière de la référence (DER standard)
+
+// Lit un texte RTTM et renvoie la liste des tours de parole : {debut, fin, loc}.
+// Format d'une ligne : SPEAKER <fichier> 1 <début_s> <durée_s> <NA> <NA> <locuteur> <NA> <NA>
+function lireRTTM(texte) {
+  var segments = [];
+  var lignes = texte.split(/\r?\n/);
+  for (var i = 0; i < lignes.length; i++) {
+    var champs = lignes[i].trim().split(/\s+/);
+    if (champs[0] !== "SPEAKER" || champs.length < 8) continue;   // ligne vide ou autre type
+    var debut = parseFloat(champs[3]);
+    var duree = parseFloat(champs[4]);
+    if (isNaN(debut) || isNaN(duree) || duree <= 0) continue;
+    segments.push({ debut: debut, fin: debut + duree, loc: champs[7] });
+  }
+  return segments;
+}
+
+// Liste des locuteurs, dans l'ordre de leur première prise de parole.
+function listerLocuteurs(segments) {
+  var tries = segments.slice().sort(function (x, y) { return x.debut - y.debut; });
+  var noms = [];
+  for (var i = 0; i < tries.length; i++) {
+    if (noms.indexOf(tries[i].loc) === -1) noms.push(tries[i].loc);
+  }
+  return noms;
+}
+
+// Découpe le temps en trames de 10 ms. Pour chaque locuteur, un tableau de 0 et de 1 :
+// 1 si le MILIEU de la trame tombe dans un de ses tours de parole.
+function activite(segments, locuteurs, nTrames) {
+  var act = [];
+  for (var k = 0; k < locuteurs.length; k++) act.push(new Uint8Array(nTrames));
+  for (var s = 0; s < segments.length; s++) {
+    var ligne = act[locuteurs.indexOf(segments[s].loc)];
+    // première trame dont le milieu (i + 0,5) × PAS est ≥ début ; dernière : milieu < fin
+    var i0 = Math.max(0, Math.ceil(segments[s].debut / PAS - 0.5));
+    var i1 = Math.min(nTrames, Math.ceil(segments[s].fin / PAS - 0.5));
+    for (var i = i0; i < i1; i++) ligne[i] = 1;
+  }
+  return act;
+}
+
+// Association prédiction -> référence. Les noms prédits (SPK00…) sont arbitraires : on cherche
+// à quel locuteur de la référence chacun correspond. On essaie toutes les associations possibles
+// (un locuteur de référence sert au plus une fois) et on garde celle qui maximise le temps de
+// recouvrement total. Même principe que l'appariement optimal de pyannote.metrics.
+// Renvoie assoc : assoc[h] = numéro du locuteur de référence associé au prédit h, ou -1.
+function associer(actRef, actPred, nTrames) {
+  var nRef = actRef.length, nPred = actPred.length;
+
+  // recouvrement[h][r] = nombre de trames où le prédit h et la référence r parlent ensemble
+  var recouvrement = [];
+  for (var h = 0; h < nPred; h++) {
+    recouvrement.push([]);
+    for (var r = 0; r < nRef; r++) {
+      var n = 0;
+      for (var i = 0; i < nTrames; i++) n += actPred[h][i] & actRef[r][i];
+      recouvrement[h].push(n);
+    }
+  }
+
+  var assoc = [], pris = [], meilleurScore = -1, meilleure = [];
+  for (h = 0; h < nPred; h++) assoc.push(-1);
+
+  if (nRef > 8 || nPred > 8) {
+    // Trop de locuteurs pour tout essayer : on prend les paires par recouvrement décroissant.
+    var paires = [];
+    for (h = 0; h < nPred; h++) for (r = 0; r < nRef; r++) paires.push([recouvrement[h][r], h, r]);
+    paires.sort(function (x, y) { return y[0] - x[0]; });
+    for (var p = 0; p < paires.length; p++) {
+      if (paires[p][0] > 0 && assoc[paires[p][1]] === -1 && !pris[paires[p][2]]) {
+        assoc[paires[p][1]] = paires[p][2];
+        pris[paires[p][2]] = true;
+      }
+    }
+    return assoc;
+  }
+
+  // Essai de toutes les possibilités, un locuteur prédit après l'autre.
+  function essayer(h, score) {
+    if (h === nPred) {                               // tous les prédits ont été traités
+      if (score > meilleurScore) { meilleurScore = score; meilleure = assoc.slice(); }
+      return;
+    }
+    assoc[h] = -1;                                   // possibilité 1 : h reste sans partenaire
+    essayer(h + 1, score);
+    for (var r = 0; r < nRef; r++) {                 // possibilité 2 : h prend une référence libre
+      if (pris[r] || recouvrement[h][r] === 0) continue;
+      pris[r] = true; assoc[h] = r;
+      essayer(h + 1, score + recouvrement[h][r]);
+      pris[r] = false;
+    }
+    assoc[h] = -1;
+  }
+  essayer(0, 0);
+  return meilleure;
+}
+
+// Compte les erreurs trame par trame.
+//   R = locuteurs de la référence actifs, H = locuteurs prédits actifs.
+//   raté          = max(0, |R| − |H|)       : quelqu'un parle, le système ne l'entend pas
+//   fausse alerte = max(0, |H| − |R|)       : le système entend quelqu'un qui ne parle pas
+//   confusion     = min(|R|, |H|) − |R ∩ H| : il entend bien quelqu'un, mais pas la bonne personne
+//   DER = (raté + fausse alerte + confusion) / somme des |R|
+function compterErreurs(actRef, actPred, assoc, segmentsRef, nTrames) {
+  // Trames ignorées par le DER standard : à moins de COLLAR d'un début ou d'une fin de la référence.
+  var ignore = new Uint8Array(nTrames);
+  for (var s = 0; s < segmentsRef.length; s++) {
+    var frontieres = [segmentsRef[s].debut, segmentsRef[s].fin];
+    for (var f = 0; f < 2; f++) {
+      var i0 = Math.max(0, Math.ceil((frontieres[f] - COLLAR) / PAS - 0.5));
+      var i1 = Math.min(nTrames, Math.ceil((frontieres[f] + COLLAR) / PAS - 0.5));
+      for (var j = i0; j < i1; j++) ignore[j] = 1;
+    }
+  }
+
+  var strict = { rate: 0, fa: 0, conf: 0, total: 0 };
+  var standard = { rate: 0, fa: 0, conf: 0, total: 0 };
+  var type = new Uint8Array(nTrames);            // 0 juste, 1 raté, 2 fausse alerte, 3 confusion
+  var cumul = new Float32Array(nTrames + 1);     // cumul[i] = erreurs (strictes) avant la trame i
+
+  for (var i = 0; i < nTrames; i++) {
+    var nR = 0, nH = 0, nCommun = 0;
+    for (var r = 0; r < actRef.length; r++) nR += actRef[r][i];
+    for (var h = 0; h < actPred.length; h++) {
+      if (!actPred[h][i]) continue;
+      nH++;
+      if (assoc[h] >= 0 && actRef[assoc[h]][i]) nCommun++;   // prédit ET vrai : dans R ∩ H
+    }
+    var rate = Math.max(0, nR - nH);
+    var fa = Math.max(0, nH - nR);
+    var conf = Math.min(nR, nH) - nCommun;
+
+    strict.rate += rate; strict.fa += fa; strict.conf += conf; strict.total += nR;
+    if (!ignore[i]) {
+      standard.rate += rate; standard.fa += fa; standard.conf += conf; standard.total += nR;
+    }
+    type[i] = conf > 0 ? 3 : (rate > 0 ? 1 : (fa > 0 ? 2 : 0));
+    cumul[i + 1] = cumul[i] + rate + fa + conf;
+  }
+  return { strict: enPourcent(strict), standard: enPourcent(standard), type: type, cumul: cumul, total: strict.total };
+}
+
+// Passe des nombres de trames aux pourcentages de la parole de référence.
+function enPourcent(c) {
+  var t = Math.max(1, c.total);
+  return { der: 100 * (c.rate + c.fa + c.conf) / t, rate: 100 * c.rate / t, fa: 100 * c.fa / t, conf: 100 * c.conf / t };
+}
+
+/* =====================================================================================
+   2. ÉTAT DE LA PAGE
+   ===================================================================================== */
+
+var COULEURS = ["#4aa8ff", "#3ddc97", "#ffd84a", "#35e0e0", "#f5f5f5", "#ff8fc7", "#9bb0ff", "#b6e36b"];
+var COULEUR_ERREUR = ["", "#ff4d4d", "#ff9f1c", "#b46bff"];
+
+var etat = {
+  ref: null,                    // segments de la référence, ou null
+  pred: { a: null, b: null },   // segments des deux prédictions
+  noms: { audio: "", ref: "Référence", a: "Prédiction", b: "Prédiction B" },
+  modeles: { a: "", b: "" },    // quel système a produit chaque prédiction (affiché en petit)
+  vues: { a: null, b: null },   // tout ce qui est calculé pour une prédiction (voir construireVue)
+  courant: "a",                 // prédiction affichée
+  duree: 0, nTrames: 0,
+  transition: null,             // {de, vers, t0} pendant le fondu entre deux prédictions
+  lecture: false, horloge: 0    // horloge interne, utilisée seulement s'il n'y a pas d'audio
+};
+
+function $(id) { return document.getElementById(id); }
+
+// Prépare tout ce qu'il faut pour afficher une prédiction.
+function construireVue(segPred) {
+  var n = etat.nTrames;
+  var locPred = listerLocuteurs(segPred);
+  var actPred = activite(segPred, locPred, n);
+  var vue = { segPred: segPred, locPred: locPred, entites: [], couloir: [], erreurs: null };
+
+  if (!etat.ref) {
+    // Sans référence : une sphère par locuteur prédit, avec son nom brut.
+    for (var h = 0; h < locPred.length; h++) {
+      vue.entites.push({ nom: locPred[h], couleur: COULEURS[h % COULEURS.length], actPred: actPred[h], actRef: null });
+      vue.couloir.push(h);
+    }
+    return vue;
+  }
+
+  var locRef = listerLocuteurs(etat.ref);
+  var actRef = activite(etat.ref, locRef, n);
+  var assoc = associer(actRef, actPred, n);
+  vue.erreurs = compterErreurs(actRef, actPred, assoc, etat.ref, n);
+  vue.locRef = locRef;
+
+  // Une « entité » = une sphère = une couleur. D'abord les locuteurs de la référence
+  // (ce nom ne reste affiché que si le système n'a trouvé personne pour ce locuteur)…
+  for (var r = 0; r < locRef.length; r++) {
+    vue.entites.push({ nom: locRef[r], couleur: COULEURS[r % COULEURS.length], actPred: null, actRef: actRef[r] });
+  }
+  // …puis chaque prédit rejoint la sphère de sa référence et lui donne son nom (SPK00, SPK01…),
+  // ou reçoit une sphère à lui s'il est en trop.
+  for (h = 0; h < locPred.length; h++) {
+    if (assoc[h] >= 0) {
+      vue.entites[assoc[h]].actPred = actPred[h];
+      vue.entites[assoc[h]].nom = locPred[h];
+      vue.couloir.push(assoc[h]);
+    } else {
+      vue.couloir.push(vue.entites.length);
+      vue.entites.push({ nom: locPred[h], couleur: COULEURS[vue.entites.length % COULEURS.length], actPred: actPred[h], actRef: null });
+    }
+  }
+  return vue;
+}
+
+// À appeler après chaque chargement : refait les calculs et l'affichage.
+function recalculer() {
+  var fin = 0;
+  var listes = [etat.ref, etat.pred.a, etat.pred.b];
+  for (var k = 0; k < listes.length; k++) {
+    if (!listes[k]) continue;
+    for (var s = 0; s < listes[k].length; s++) fin = Math.max(fin, listes[k][s].fin);
+  }
+  if (audioPret && isFinite(audio.duration)) fin = Math.max(fin, audio.duration);
+  etat.duree = fin;
+  etat.nTrames = Math.ceil(fin / PAS);
+
+  etat.vues.a = etat.pred.a ? construireVue(etat.pred.a) : null;
+  etat.vues.b = etat.pred.b ? construireVue(etat.pred.b) : null;
+  if (!etat.vues[etat.courant]) etat.courant = etat.vues.a ? "a" : "b";
+  etat.transition = null;
+
+  // Contrôle chiffré : les DER exacts, lisibles dans la page (attribut data-controle de <body>).
+  var controle = {};
+  ["a", "b"].forEach(function (c) {
+    var v = etat.vues[c];
+    if (v && v.erreurs) controle[c] = { strict: +v.erreurs.strict.der.toFixed(2), standard: +v.erreurs.standard.der.toFixed(2) };
+  });
+  document.body.setAttribute("data-controle", JSON.stringify(controle));
+
+  majInterface();
+  construireSpheres();
+  redimensionner();
+}
+
+function vueCourante() { return etat.vues[etat.courant]; }
+
+/* =====================================================================================
+   3. AUDIO : lecture et mesure du volume
+   ===================================================================================== */
+
+var audio = null;            // le lecteur audio du navigateur
+var audioPret = false;       // vrai quand l'audio est chargé : c'est lui qui donne l'heure
+var contexte = null, analyseur = null, echantillons = null, volume = 0;
+
+// Crée un lecteur neuf à chaque chargement (l'ancien est arrêté, l'analyseur sera rebranché).
+function nouvelAudio(adresse) {
+  if (audio) audio.pause();
+  var lecteur = new Audio();
+  audio = lecteur;
+  audioPret = false; analyseur = null;
+  etat.lecture = false; etat.horloge = 0;
+  lecteur.addEventListener("loadedmetadata", function () {
+    if (audio !== lecteur) return;                 // un autre audio a été chargé entre-temps
+    audioPret = true; recalculer();
+  });
+  lecteur.addEventListener("ended", majBoutonLecture);
+  lecteur.addEventListener("error", function () {
+    if (audio === lecteur) $("message").textContent = "Audio introuvable ou illisible : la page continue sans le son.";
+  });
+  if (adresse) lecteur.src = adresse;
+  majBoutonLecture();
+}
+
+// Le navigateur n'autorise le son qu'après un geste de l'utilisateur : on branche donc
+// l'analyseur au premier clic sur Lecture. Chaîne : audio -> analyseur -> haut-parleurs.
+function brancherAnalyseur() {
+  if (analyseur) return;
+  // Page ouverte par double-clic + audio lu directement sur le disque (exemples) : le navigateur
+  // interdit d'analyser ce son (il deviendrait muet). On le lit donc sans analyseur, et les
+  // sphères pulsent à volume fixe. Un fichier déposé (adresse « blob: ») n'a pas ce problème.
+  if (location.protocol === "file:" && audio.src.indexOf("blob:") !== 0) return;
+  try {
+    if (!contexte) contexte = new (window.AudioContext || window.webkitAudioContext)();
+    var source = contexte.createMediaElementSource(audio);
+    analyseur = contexte.createAnalyser();
+    analyseur.fftSize = 1024;
+    echantillons = new Uint8Array(analyseur.fftSize);
+    source.connect(analyseur);
+    analyseur.connect(contexte.destination);
+  } catch (e) { analyseur = null; }
+}
+
+// Volume entre 0 et 1 : moyenne quadratique (RMS) des derniers échantillons, puis lissage.
+function mesurerVolume() {
+  var cible = 0;
+  if (analyseur && enLecture()) {
+    analyseur.getByteTimeDomainData(echantillons);          // valeurs 0..255, silence = 128
+    var somme = 0;
+    for (var i = 0; i < echantillons.length; i++) {
+      var x = (echantillons[i] - 128) / 128;
+      somme += x * x;
+    }
+    cible = Math.min(1, Math.sqrt(somme / echantillons.length) * 5);
+  } else if (enLecture()) {
+    cible = 0.4;                                            // pas d'analyseur : pulsation fixe
+  }
+  volume += (cible - volume) * 0.35;
+}
+
+function enLecture() { return audioPret ? !audio.paused : etat.lecture; }
+function tempsCourant() { return audioPret ? audio.currentTime : etat.horloge; }
+
+function allerA(t) {
+  t = Math.max(0, Math.min(etat.duree, t));
+  if (audioPret) audio.currentTime = Math.min(t, audio.duration || t); else etat.horloge = t;
+}
+
+function basculerLecture() {
+  if (audioPret) {
+    brancherAnalyseur();
+    if (audio.paused) audio.play(); else audio.pause();
+  } else {
+    if (etat.horloge >= etat.duree) etat.horloge = 0;
+    etat.lecture = !etat.lecture;
+  }
+  setTimeout(majBoutonLecture, 50);
+}
+
+function majBoutonLecture() { $("lecture").textContent = enLecture() ? "❚❚ Pause" : "▶ Lecture"; }
+
+/* =====================================================================================
+   4. SCÈNE 3D (Three.js)
+   ===================================================================================== */
+
+var trois = null;       // {moteur, scene, camera, groupe} ; reste null si WebGL n'est pas disponible
+var spheres = [];       // une entrée par entité : {boule, halo, anneau, lampe, niveau, niveauRef}
+var orbite = { angle: 0.6, hauteur: 1.08, rayon: 8, dernierGeste: -1e9, glisse: false, x: 0, y: 0 };
+
+function creerScene() {
+  var conteneur = $("scene");
+  var moteur = new THREE.WebGLRenderer({ antialias: true });
+  moteur.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // plafonné : fluide sans GPU dédié
+  conteneur.insertBefore(moteur.domElement, conteneur.firstChild);
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07090f);
+  scene.fog = new THREE.Fog(0x07090f, 14, 30);
+  var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+
+  scene.add(new THREE.AmbientLight(0x8fa3cc, 0.55));
+  var plafonnier = new THREE.DirectionalLight(0xffffff, 0.5);
+  plafonnier.position.set(3, 8, 4);
+  scene.add(plafonnier);
+
+  // Sol, table ronde, pied et liseré lumineux.
+  var sol = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshStandardMaterial({ color: 0x0b0f1a, roughness: 0.95 }));
+  sol.rotation.x = -Math.PI / 2;
+  scene.add(sol);
+  var bois = new THREE.MeshStandardMaterial({ color: 0x2c3c66, roughness: 0.5, metalness: 0.2 });
+  var plateau = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.12, 64), bois);
+  plateau.position.y = 0.8;
+  scene.add(plateau);
+  var pied = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.6, 0.8, 24), bois);
+  pied.position.y = 0.4;
+  scene.add(pied);
+  var lisere = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.02, 8, 96), new THREE.MeshBasicMaterial({ color: 0x5f7fd0 }));
+  lisere.rotation.x = Math.PI / 2;
+  lisere.position.y = 0.87;
+  scene.add(lisere);
+
+  var groupe = new THREE.Group();     // contiendra les sphères, refaites à chaque chargement
+  scene.add(groupe);
+  trois = { moteur: moteur, scene: scene, camera: camera, groupe: groupe };
+
+  // Caméra pilotable : glisser pour tourner, molette pour zoomer.
+  var toile = moteur.domElement;
+  toile.addEventListener("pointerdown", function (e) {
+    orbite.glisse = true; orbite.x = e.clientX; orbite.y = e.clientY;
+    toile.setPointerCapture(e.pointerId);
+  });
+  toile.addEventListener("pointermove", function (e) {
+    if (!orbite.glisse) return;
+    orbite.angle -= (e.clientX - orbite.x) * 0.006;
+    orbite.hauteur = Math.max(0.25, Math.min(1.45, orbite.hauteur - (e.clientY - orbite.y) * 0.005));
+    orbite.x = e.clientX; orbite.y = e.clientY;
+    orbite.dernierGeste = performance.now();
+  });
+  toile.addEventListener("pointerup", function () { orbite.glisse = false; });
+  toile.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    orbite.rayon = Math.max(5, Math.min(18, orbite.rayon + e.deltaY * 0.01));
+    orbite.dernierGeste = performance.now();
+  }, { passive: false });
+}
+
+// Texture ronde et floue (dégradé blanc -> transparent) : sert de halo lumineux bon marché.
+function textureHalo() {
+  var c = document.createElement("canvas");
+  c.width = c.height = 128;
+  var g = c.getContext("2d");
+  var d = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  d.addColorStop(0, "rgba(255,255,255,1)");
+  d.addColorStop(0.35, "rgba(255,255,255,0.35)");
+  d.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = d;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+// Étiquette : le nom écrit dans une image, affichée toujours face à la caméra (sprite).
+function etiquette(texte, couleur) {
+  var c = document.createElement("canvas");
+  c.width = 512; c.height = 128;
+  var g = c.getContext("2d");
+  g.font = "700 62px Segoe UI, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.shadowColor = "rgba(0,0,0,0.9)"; g.shadowBlur = 12;
+  g.fillStyle = couleur;
+  g.fillText(texte, 256, 64, 500);
+  var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  sprite.scale.set(2.6, 0.65, 1);
+  return sprite;
+}
+
+var formeBoule = null, formeAnneau = null, imageHalo = null;
+
+// Place une sphère par entité, régulièrement autour de la table.
+function construireSpheres() {
+  if (!trois) return;
+  var groupe = trois.groupe;
+  while (groupe.children.length) groupe.remove(groupe.children[0]);
+  spheres = [];
+  var vue = vueCourante();
+  if (!vue) return;
+  if (!formeBoule) {
+    formeBoule = new THREE.SphereGeometry(0.45, 32, 24);
+    formeAnneau = new THREE.RingGeometry(0.62, 0.74, 48);
+    imageHalo = textureHalo();
+  }
+  var n = vue.entites.length;
+  for (var k = 0; k < n; k++) {
+    var e = vue.entites[k];
+    var a = 2 * Math.PI * k / n;
+    var x = 2.9 * Math.sin(a), z = 2.9 * Math.cos(a);
+
+    var boule = new THREE.Mesh(formeBoule, new THREE.MeshStandardMaterial({ color: e.couleur, emissive: e.couleur, emissiveIntensity: 0.05, roughness: 0.35 }));
+    boule.position.set(x, 1.45, z);
+    groupe.add(boule);
+
+    var halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: imageHalo, color: e.couleur, blending: THREE.AdditiveBlending, transparent: true, opacity: 0, depthWrite: false }));
+    halo.position.copy(boule.position);
+    groupe.add(halo);
+
+    var nom = etiquette(e.nom, e.couleur);
+    nom.position.set(x, 2.45, z);
+    groupe.add(nom);
+
+    var anneau = null;
+    if (e.actRef) {                       // anneau au sol : allumé quand la référence dit « il parle »
+      anneau = new THREE.Mesh(formeAnneau, new THREE.MeshBasicMaterial({ color: e.couleur, transparent: true, opacity: 0.12, side: THREE.DoubleSide }));
+      anneau.rotation.x = -Math.PI / 2;
+      anneau.position.set(x, 0.02, z);
+      groupe.add(anneau);
+    }
+
+    var lampe = null;
+    if (n <= 6) {                         // une petite lampe par sphère éclaire la table (limité à 6 pour rester fluide)
+      lampe = new THREE.PointLight(e.couleur, 0, 7);
+      lampe.position.copy(boule.position);
+      groupe.add(lampe);
+    }
+    spheres.push({ boule: boule, halo: halo, anneau: anneau, lampe: lampe, niveau: 0, niveauRef: 0 });
+  }
+}
+
+// Une image de l'animation 3D : allume les sphères des locuteurs actifs à l'instant t.
+function animerScene(t, maintenant) {
+  if (!trois) return;
+  var vue = vueCourante();
+  var i = Math.min(etat.nTrames - 1, Math.floor(t / PAS));     // trame courante
+  for (var k = 0; k < spheres.length && vue; k++) {
+    var e = vue.entites[k], s = spheres[k];
+    var parle = e.actPred && i >= 0 && e.actPred[i] ? 1 : 0;
+    var vrai = e.actRef && i >= 0 && e.actRef[i] ? 1 : 0;
+    s.niveau += (parle - s.niveau) * 0.2;                      // glisse vers 0 ou 1 : allumage progressif
+    s.niveauRef += (vrai - s.niveauRef) * 0.2;
+
+    var taille = 1 + 0.15 * s.niveau + 0.3 * s.niveau * volume;   // grossit un peu, puis pulse avec le volume
+    s.boule.scale.set(taille, taille, taille);
+    s.boule.material.emissiveIntensity = 0.05 + s.niveau * (0.6 + 1.0 * volume);
+    s.halo.material.opacity = s.niveau * (0.35 + 0.65 * volume);
+    var h = 2.2 + 2.2 * s.niveau * (0.5 + volume);
+    s.halo.scale.set(h, h, 1);
+    if (s.lampe) s.lampe.intensity = s.niveau * (0.8 + 1.6 * volume);
+    if (s.anneau) s.anneau.material.opacity = 0.12 + 0.88 * s.niveauRef;
+  }
+
+  // Caméra : tourne doucement, sauf pendant 4 s après un geste à la souris.
+  if (maintenant - orbite.dernierGeste > 4000) orbite.angle += 0.0012;
+  var r = orbite.rayon, p = orbite.hauteur;
+  trois.camera.position.set(r * Math.sin(p) * Math.sin(orbite.angle), 1 + r * Math.cos(p), r * Math.sin(p) * Math.cos(orbite.angle));
+  trois.camera.lookAt(0, 1.2, 0);
+  trois.moteur.render(trois.scene, trois.camera);
+}
+
+/* =====================================================================================
+   5. BANDES : référence, prédiction, erreurs
+   ===================================================================================== */
+
+var MARGE = 250;            // largeur de la colonne des noms, à gauche
+var toileBandes = $("bandes");
+var images = { a: null, b: null };   // bandes déjà dessinées pour chaque prédiction (pour le fondu)
+
+// Lignes à dessiner et hauteur totale, selon qu'il y a une référence ou non.
+function disposition() {
+  var lignes = [], y = 10;
+  if (etat.ref) { lignes.push({ cle: "ref", y: y, h: 50 }); y += 58; }
+  lignes.push({ cle: "pred", y: y, h: 50 }); y += 58;
+  if (etat.ref) { lignes.push({ cle: "err", y: y, h: 30 }); y += 38; }
+  return { lignes: lignes, hauteur: y + 26 };
+}
+
+function xDuTemps(t, largeur) { return MARGE + (largeur - MARGE - 20) * t / Math.max(etat.duree, 1e-6); }
+
+// Dessine les bandes d'une prédiction dans une image hors écran.
+function dessinerImage(cle, largeur, hauteur, echelle) {
+  var vue = etat.vues[cle];
+  var c = document.createElement("canvas");
+  c.width = largeur * echelle; c.height = hauteur * echelle;
+  if (!vue) return c;
+  var g = c.getContext("2d");
+  g.scale(echelle, echelle);
+  var d = disposition();
+
+  function fond(l, titre) {
+    g.fillStyle = "#111727";
+    g.fillRect(MARGE, l.y, largeur - MARGE - 20, l.h);
+    g.fillStyle = "#f2f5fb";
+    g.font = "600 19px Segoe UI, sans-serif";
+    g.textAlign = "right"; g.textBaseline = "middle";
+    g.fillText(titre, MARGE - 14, l.y + l.h / 2, MARGE - 24);
+  }
+  // Un rectangle par tour de parole ; chaque locuteur a son couloir dans la bande,
+  // ce qui laisse voir les chevauchements.
+  function tours(l, segments, couloirDe, nCouloirs) {
+    var hc = l.h / nCouloirs;
+    for (var s = 0; s < segments.length; s++) {
+      var k = couloirDe(segments[s].loc);
+      var x0 = xDuTemps(segments[s].debut, largeur), x1 = xDuTemps(segments[s].fin, largeur);
+      g.fillStyle = vue.entites[k].couleur;
+      g.fillRect(x0, l.y + k * hc + 1, Math.max(1, x1 - x0), hc - 2);
+    }
+  }
+
+  for (var n = 0; n < d.lignes.length; n++) {
+    var l = d.lignes[n];
+    if (l.cle === "ref") {
+      fond(l, etat.noms.ref);
+      tours(l, etat.ref, function (loc) { return vue.locRef.indexOf(loc); }, vue.locRef.length);
+    } else if (l.cle === "pred") {
+      fond(l, etat.noms[cle]);
+      tours(l, vue.segPred, function (loc) { return vue.couloir[vue.locPred.indexOf(loc)]; }, vue.entites.length);
+    } else {
+      fond(l, "Erreurs");
+      // On regroupe les trames voisines de même type en un seul rectangle.
+      var type = vue.erreurs.type, debut = 0;
+      for (var i = 1; i <= type.length; i++) {
+        if (i === type.length || type[i] !== type[debut]) {
+          if (type[debut]) {
+            var xa = xDuTemps(debut * PAS, largeur), xb = xDuTemps(i * PAS, largeur);
+            g.fillStyle = COULEUR_ERREUR[type[debut]];
+            g.fillRect(xa, l.y, Math.max(1, xb - xa), l.h);
+          }
+          debut = i;
+        }
+      }
+    }
+  }
+
+  // Graduations de temps.
+  var pas = etat.duree <= 300 ? 10 : (etat.duree <= 1200 ? 60 : 300);
+  g.fillStyle = "#a9b4cc"; g.font = "15px Segoe UI, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "top";
+  for (var t = 0; t <= etat.duree; t += pas) {
+    var x = xDuTemps(t, largeur);
+    g.fillRect(x, d.hauteur - 24, 1, 5);
+    if ((t / pas) % 3 === 0) g.fillText(minutes(t), x, d.hauteur - 18);
+  }
+  return c;
+}
+
+// Affiche les bandes à l'écran : image de la prédiction courante (ou fondu entre deux), puis tête de lecture.
+function dessinerBandes(t, maintenant) {
+  var g = toileBandes.getContext("2d");
+  var L = toileBandes.width, H = toileBandes.height;
+  g.clearRect(0, 0, L, H);
+  var tr = etat.transition;
+  if (tr) {
+    var k = Math.min(1, (maintenant - tr.t0) / 600);     // 0 -> 1 en 0,6 s
+    g.globalAlpha = 1 - k; if (images[tr.de]) g.drawImage(images[tr.de], 0, 0);
+    g.globalAlpha = k;     if (images[tr.vers]) g.drawImage(images[tr.vers], 0, 0);
+    g.globalAlpha = 1;
+    if (k >= 1) etat.transition = null;
+  } else if (images[etat.courant]) {
+    g.drawImage(images[etat.courant], 0, 0);
+  }
+  if (!etat.duree) return;
+  var echelle = L / toileBandes.clientWidth;
+  var x = xDuTemps(t, toileBandes.clientWidth) * echelle;
+  g.fillStyle = "#ffffff";
+  g.fillRect(x - echelle, 0, 2 * echelle, H - 24 * echelle);
+}
+
+// Clic ou glissé sur les bandes : on déplace la lecture.
+function tempsDuClic(e) {
+  var cadre = toileBandes.getBoundingClientRect();
+  return etat.duree * (e.clientX - cadre.left - MARGE) / (cadre.width - MARGE - 20);
+}
+var glisseBandes = false;
+toileBandes.addEventListener("pointerdown", function (e) { glisseBandes = true; toileBandes.setPointerCapture(e.pointerId); allerA(tempsDuClic(e)); });
+toileBandes.addEventListener("pointermove", function (e) { if (glisseBandes) allerA(tempsDuClic(e)); });
+toileBandes.addEventListener("pointerup", function () { glisseBandes = false; });
+
+/* =====================================================================================
+   6. PANNEAU DES CHIFFRES, LÉGENDE, COMMANDES
+   ===================================================================================== */
+
+var affiche = [0, 0, 0, 0, 0, 0, 0, 0];     // valeurs affichées : elles glissent vers les vraies valeurs
+
+function minutes(t) {
+  t = Math.max(0, Math.floor(t));
+  return Math.floor(t / 60) + ":" + (t % 60 < 10 ? "0" : "") + (t % 60);
+}
+function pourcent(v) { return v.toFixed(1).replace(".", ",") + " %"; }
+
+function majPanneau(t) {
+  var vue = vueCourante();
+  $("horloge").textContent = minutes(t) + " / " + minutes(etat.duree);
+  if (!vue || !vue.erreurs) return;
+  var e = vue.erreurs;
+  var cibles = [e.strict.der, e.strict.rate, e.strict.fa, e.strict.conf, e.standard.der, e.standard.rate, e.standard.fa, e.standard.conf];
+  for (var k = 0; k < 8; k++) {
+    affiche[k] += (cibles[k] - affiche[k]) * 0.15;
+    if (Math.abs(cibles[k] - affiche[k]) < 0.02) affiche[k] = cibles[k];
+    $("v" + k).textContent = pourcent(affiche[k]);
+  }
+  // Erreur cumulée : erreurs commises depuis le début, en % de TOUTE la parole de référence.
+  // À la fin du fichier, elle vaut donc exactement le DER strict.
+  var i = Math.max(0, Math.min(etat.nTrames, Math.floor(t / PAS)));
+  var cumul = 100 * e.cumul[i] / Math.max(1, e.total);
+  $("vCumul").textContent = pourcent(cumul);
+  $("jaugeCumul").style.width = (e.strict.der > 0 ? 100 * cumul / e.strict.der : 0) + "%";
+}
+
+function majInterface() {
+  var vue = vueCourante();
+  $("panneau").classList.toggle("cache", !vue);
+  $("sousTitre").textContent = etat.noms.audio || "Qui parle, et quand ?";
+  if (!vue) { $("legende").innerHTML = ""; return; }
+
+  var avecRef = !!vue.erreurs;
+  $("titrePred").textContent = etat.noms[etat.courant];
+  $("modele").textContent = "Modèle : " + (etat.modeles[etat.courant] || "non précisé (RTTM fourni tel quel)");
+  $("tableDer").classList.toggle("cache", !avecRef);
+  $("cumul").classList.toggle("cache", !avecRef);
+  $("sansRef").classList.toggle("cache", avecRef);
+  $("aideAnneau").classList.toggle("cache", !avecRef);
+
+  // Légende, toujours visible : une pastille par locuteur, puis les couleurs d'erreur.
+  var legende = $("legende");
+  legende.innerHTML = "";
+  function pastille(couleur, texte) {
+    var s = document.createElement("span");
+    var p = document.createElement("i");
+    p.className = "pastille"; p.style.background = couleur;
+    s.appendChild(p); s.appendChild(document.createTextNode(texte));
+    legende.appendChild(s);
+  }
+  for (var k = 0; k < vue.entites.length; k++) pastille(vue.entites[k].couleur, vue.entites[k].nom);
+  if (avecRef) {
+    var sep = document.createElement("span"); sep.className = "sep"; sep.textContent = "|"; legende.appendChild(sep);
+    pastille(COULEUR_ERREUR[1], "parole ratée");
+    pastille(COULEUR_ERREUR[2], "fausse alerte");
+    pastille(COULEUR_ERREUR[3], "confusion");
+  }
+
+  // Bascule A / B : visible seulement s'il y a deux prédictions.
+  var boutons = $("bascule").querySelectorAll("button");
+  $("bascule").classList.toggle("cache", !(etat.vues.a && etat.vues.b));
+  for (var b = 0; b < boutons.length; b++) {
+    var cle = boutons[b].getAttribute("data-pred");
+    boutons[b].textContent = etat.noms[cle];
+    boutons[b].classList.toggle("actif", cle === etat.courant);
+  }
+}
+
+// Passe à l'autre prédiction avec un fondu des bandes (les chiffres glissent tout seuls).
+function choisirPrediction(cle) {
+  if (!etat.vues[cle] || cle === etat.courant) return;
+  var avant = vueCourante();
+  etat.transition = { de: etat.courant, vers: cle, t0: performance.now() };
+  etat.courant = cle;
+  majInterface();
+  // Les sphères ne sont refaites que si la liste des locuteurs change (un locuteur « en trop »).
+  var memes = avant.entites.length === vueCourante().entites.length;
+  for (var k = 0; memes && k < avant.entites.length; k++) memes = avant.entites[k].nom === vueCourante().entites[k].nom;
+  if (!memes) construireSpheres();
+}
+
+function redimensionner() {
+  var d = disposition();
+  var echelle = Math.min(window.devicePixelRatio || 1, 2);
+  toileBandes.style.height = d.hauteur + "px";
+  var largeur = toileBandes.clientWidth;
+  toileBandes.width = largeur * echelle;
+  toileBandes.height = d.hauteur * echelle;
+  images.a = dessinerImage("a", largeur, d.hauteur, echelle);
+  images.b = dessinerImage("b", largeur, d.hauteur, echelle);
+  if (trois) {
+    var c = $("scene");
+    trois.moteur.setSize(c.clientWidth, c.clientHeight);
+    trois.camera.aspect = c.clientWidth / Math.max(1, c.clientHeight);
+    trois.camera.updateProjectionMatrix();
+  }
+}
+window.addEventListener("resize", redimensionner);
+
+$("lecture").addEventListener("click", basculerLecture);
+// Montre ou cache la barre des fichiers ; la scène et les bandes reprennent la place libérée.
+$("ouvrir").addEventListener("click", function () { $("fichiers").classList.toggle("cache"); redimensionner(); });
+$("bascule").addEventListener("click", function (e) {
+  var cle = e.target.getAttribute("data-pred");
+  if (cle) choisirPrediction(cle);
+});
+
+document.addEventListener("keydown", function (e) {
+  if (e.target.tagName === "INPUT") return;            // on tape un nom : ne pas déclencher les raccourcis
+  if (e.code === "Space") { e.preventDefault(); basculerLecture(); }
+  else if (e.key === "f" || e.key === "F") {
+    if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+  }
+  else if (e.key === "p" || e.key === "P") choisirPrediction(etat.courant === "a" ? "b" : "a");
+  else if (e.key === "ArrowLeft") allerA(tempsCourant() - 5);
+  else if (e.key === "ArrowRight") allerA(tempsCourant() + 5);
+});
+
+/* =====================================================================================
+   7. CHARGEMENT : zones de dépôt et paramètres d'URL
+   ===================================================================================== */
+
+function zone(role) { return document.querySelector('.zone[data-role="' + role + '"]'); }
+
+function noter(role, texte) {
+  zone(role).classList.add("charge");
+  zone(role).querySelector(".info").textContent = texte;
+}
+
+// Reçoit le texte d'un RTTM (référence, prédiction A ou B).
+function recevoirRTTM(role, texte, nomFichier) {
+  var segments = lireRTTM(texte);
+  if (!segments.length) { $("message").textContent = nomFichier + " : aucune ligne SPEAKER trouvée."; return; }
+  if (role === "ref") etat.ref = segments; else etat.pred[role] = segments;
+  noter(role, nomFichier + " : " + segments.length + " tours, " + listerLocuteurs(segments).length + " locuteurs");
+  $("message").textContent = "";
+  remettreAZero();
+  recalculer();
+}
+
+// Remet la lecture à zéro : pause, retour au début, et les chiffres du panneau repartent de 0.
+// Appelé à chaque chargement, pour que rien ne reste de la piste précédente
+// (ni l'erreur cumulée, ni les DER affichés).
+function remettreAZero() {
+  if (audio) audio.pause();
+  if (audioPret) audio.currentTime = 0;
+  etat.lecture = false; etat.horloge = 0;
+  for (var k = 0; k < affiche.length; k++) affiche[k] = 0;
+  majBoutonLecture();
+}
+
+// Nouvelle piste : on oublie la référence et les prédictions de la piste précédente.
+// Sans cela, on comparerait les RTTM d'un enregistrement avec ceux d'un autre.
+function viderPiste() {
+  etat.ref = null; etat.pred.a = null; etat.pred.b = null; etat.courant = "a";
+  etat.modeles.a = ""; etat.modeles.b = "";
+  ["ref", "a", "b"].forEach(function (role) {
+    zone(role).classList.remove("charge");
+    zone(role).querySelector(".info").textContent = "";
+  });
+  var boutons = $("exemples").querySelectorAll("button");
+  for (var k = 0; k < boutons.length; k++) boutons[k].classList.remove("actif");
+  $("message").textContent = "";
+  remettreAZero();
+  recalculer();
+}
+
+// Reçoit l'audio sous forme d'adresse (fichier déposé ou téléchargé, transformé en adresse locale « blob: »).
+// `donnees` : le fichier lui-même, gardé en mémoire pour pouvoir l'envoyer au serveur d'analyse.
+function recevoirAudio(adresse, nomFichier, titre, donnees) {
+  nouvelAudio(adresse);
+  donneesAudio = donnees || null;
+  nomAudio = nomFichier;
+  for (var k = 0; k < affiche.length; k++) affiche[k] = 0;
+  noter("audio", nomFichier);
+  fixerNom("audio", titre || nomFichier);
+  // Audio seul : la page AFFICHE une diarisation, elle ne la calcule pas elle-même.
+  if (!vueCourante()) {
+    $("message").textContent = serveur
+      ? "Audio chargé, sans RTTM. Déposer son RTTM, ou cliquer sur « Analyser l'audio » pour que le serveur le calcule."
+      : "Audio chargé, sans RTTM : rien à afficher. Déposer un RTTM, ou lancer la page avec "
+        + "« uv run python app/serveur_theatre.py » pour pouvoir analyser l'audio.";
+  }
+  majInterface();
+  majAnalyse();
+}
+
+/* --- Analyse par le serveur (seulement si la page est servie par app/serveur_theatre.py) --- */
+
+var serveur = null;        // {modele: "..."} quand le serveur d'analyse répond, sinon null
+var donneesAudio = null;   // le fichier audio en mémoire (pour l'envoyer au serveur)
+var nomAudio = "";
+
+// Au démarrage : demande au serveur quel modèle il a chargé. Avec `python -m http.server`
+// ou en double-clic, il n'y a pas de réponse, et le bouton « Analyser » reste caché.
+function interrogerServeur() {
+  if (location.protocol.indexOf("http") !== 0) return;
+  fetch("/etat").then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (reponse) { serveur = reponse; majAnalyse(); })
+    .catch(function () { serveur = null; });
+}
+
+// Le bouton « Analyser l'audio » n'apparaît que si c'est possible : un serveur et un audio en mémoire.
+function majAnalyse() { $("analyser").classList.toggle("cache", !(serveur && donneesAudio)); }
+
+// Envoie l'audio au serveur, qui renvoie le texte du RTTM (comptez environ la moitié de la durée de l'audio).
+function analyserAudio() {
+  var lecteur = audio, bouton = $("analyser"), t0 = performance.now();
+  var extension = (nomAudio.match(/\.[A-Za-z0-9]+$/) || [".wav"])[0];
+  bouton.disabled = true;
+  var minuteur = setInterval(function () {
+    bouton.textContent = "Analyse en cours… " + Math.round((performance.now() - t0) / 1000) + " s";
+  }, 1000);
+  fetch("/diariser?ext=" + encodeURIComponent(extension), { method: "POST", body: donneesAudio })
+    .then(function (r) {
+      return r.text().then(function (texte) {
+        if (!r.ok) throw new Error("Analyse impossible : " + texte);
+        return texte;
+      });
+    })
+    .then(function (texte) {
+      if (audio !== lecteur) return;                 // l'audio a changé pendant l'analyse : on jette le résultat
+      etat.modeles.a = serveur.modele;
+      recevoirRTTM("a", texte, "calculé par le serveur");
+    })
+    .catch(signalerErreur)
+    .then(function () {
+      clearInterval(minuteur);
+      bouton.disabled = false;
+      bouton.textContent = "Analyser l'audio";
+    });
+}
+$("analyser").addEventListener("click", analyserAudio);
+
+// Change un nom affiché (et la case de texte correspondante).
+function fixerNom(role, valeur) {
+  if (!valeur) return;
+  etat.noms[role] = valeur;
+  zone(role).querySelector("input[type=text]").value = valeur;
+}
+
+// Télécharge un fichier voisin. Possible seulement quand la page est servie en http.
+function telecharger(adresse) {
+  return fetch(adresse).then(function (r) {
+    if (!r.ok) throw new Error(adresse + " introuvable (" + r.status + ")");
+    return r;
+  });
+}
+function signalerErreur(e) { $("message").textContent = e.message; $("fichiers").classList.remove("cache"); redimensionner(); }
+
+// Télécharge l'audio en entier (blob) : le petit serveur de Python ne sait pas envoyer un morceau
+// de fichier, et sans cela on ne pourrait pas se déplacer dans l'audio.
+function telechargerAudio(adresse, titre) {
+  telecharger(adresse).then(function (r) { return r.blob(); })
+    .then(function (blob) { recevoirAudio(URL.createObjectURL(blob), adresse.split("/").pop(), titre, blob); })
+    .catch(signalerErreur);
+}
+
+// Exemples intégrés : la liste EXEMPLES vient de exemples/exemples.js (texte des RTTM déjà dedans).
+var exemples = (typeof EXEMPLES !== "undefined") ? EXEMPLES : [];
+
+function chargerExemple(ex) {
+  nouvelAudio("");                        // arrête tout de suite l'audio de la piste précédente
+  viderPiste();
+  fixerNom("ref", "Référence"); fixerNom("a", ex.nomA); fixerNom("b", ex.nomB);
+  recevoirRTTM("ref", ex.ref, ex.nom + "_reference.rttm");
+  etat.modeles.a = ex.modeleA || ""; etat.modeles.b = ex.modeleB || "";
+  recevoirRTTM("a", ex.a, ex.nom + "_origine.rttm");
+  recevoirRTTM("b", ex.b, ex.nom + "_finetunee.rttm");
+  // En http on télécharge l'audio ; en double-clic le lecteur le lit directement sur le disque.
+  if (location.protocol === "file:") recevoirAudio(ex.audio, ex.nom + ".wav", ex.titre);
+  else telechargerAudio(ex.audio, ex.titre);
+  var boutons = $("exemples").querySelectorAll("button");
+  for (var k = 0; k < boutons.length; k++) boutons[k].classList.toggle("actif", exemples[k] === ex);
+}
+
+exemples.forEach(function (ex) {
+  var bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.textContent = ex.titre;
+  bouton.addEventListener("click", function () { chargerExemple(ex); });
+  $("exemples").appendChild(bouton);
+});
+$("blocExemples").classList.toggle("cache", exemples.length === 0);
+
+// Bouton « Tout effacer » : repart d'une page vide (audio compris).
+$("effacer").addEventListener("click", function () {
+  nouvelAudio("");
+  donneesAudio = null; majAnalyse();
+  viderPiste();
+  zone("audio").classList.remove("charge");
+  zone("audio").querySelector(".info").textContent = "";
+  etat.noms.audio = "";
+  zone("audio").querySelector("input[type=text]").value = "";
+  majInterface();
+});
+
+// Fichier choisi ou déposé par l'utilisateur. FileReader marche aussi en file:// (pas besoin de fetch).
+function recevoirFichier(role, fichier) {
+  if (!fichier) return;
+  if (role === "audio") {
+    if (audio.src) viderPiste();          // un audio était déjà là : c'est un changement de piste
+    recevoirAudio(URL.createObjectURL(fichier), fichier.name, "", fichier);
+    return;
+  }
+  if (role !== "ref") etat.modeles[role] = "";     // RTTM déposé : on ne sait pas quel système l'a produit
+  var lecteur = new FileReader();
+  lecteur.onload = function () { recevoirRTTM(role, lecteur.result, fichier.name); };
+  lecteur.readAsText(fichier);
+}
+
+["audio", "ref", "a", "b"].forEach(function (role) {
+  var z = zone(role);
+  var choix = z.querySelector("input[type=file]");
+  var nom = z.querySelector("input[type=text]");
+  z.querySelector("button").addEventListener("click", function () { choix.click(); });   // premier bouton : « Choisir »
+  choix.addEventListener("change", function () { recevoirFichier(role, choix.files[0]); });
+  z.addEventListener("dragover", function (e) { e.preventDefault(); z.classList.add("survol"); });
+  z.addEventListener("dragleave", function () { z.classList.remove("survol"); });
+  z.addEventListener("drop", function (e) {
+    e.preventDefault(); z.classList.remove("survol");
+    recevoirFichier(role, e.dataTransfer.files[0]);
+  });
+  // Nom modifiable : il apparaît dans les bandes, le panneau et la bascule.
+  nom.addEventListener("input", function () { etat.noms[role] = nom.value; majInterface(); redimensionner(); });
+});
+// Un fichier lâché à côté d'une zone ne doit pas remplacer la page.
+window.addEventListener("dragover", function (e) { e.preventDefault(); });
+window.addEventListener("drop", function (e) { e.preventDefault(); });
+
+// Paramètres d'URL : ?exemple=reu_ncb, ou ?audio=...&ref=...&a=...&b=...&nomA=...&nomB=...
+// Les adresses ne marchent que si la page est servie en http, car le navigateur interdit fetch
+// sur une page ouverte par double-clic.
+function chargerDepuisURL() {
+  var p = new URLSearchParams(location.search);
+  for (var k = 0; k < exemples.length; k++) {
+    if (exemples[k].nom === p.get("exemple")) { chargerExemple(exemples[k]); return true; }
+  }
+  if (location.protocol.indexOf("http") !== 0) return false;
+  if (!p.get("a") && !p.get("b")) return false;
+
+  fixerNom("a", p.get("nomA")); fixerNom("b", p.get("nomB")); fixerNom("ref", p.get("nomRef"));
+  etat.modeles.a = p.get("modeleA") || ""; etat.modeles.b = p.get("modeleB") || "";
+  ["ref", "a", "b"].forEach(function (role) {
+    var adresse = p.get(role);
+    if (!adresse) return;
+    telecharger(adresse).then(function (r) { return r.text(); })
+      .then(function (texte) { recevoirRTTM(role, texte, adresse.split("/").pop()); }).catch(signalerErreur);
+  });
+  if (p.get("audio")) telechargerAudio(p.get("audio"));
+  return true;
+}
+
+/* =====================================================================================
+   8. DÉMARRAGE ET BOUCLE D'ANIMATION
+   ===================================================================================== */
+
+nouvelAudio("");
+interrogerServeur();
+try { creerScene(); }
+catch (e) { $("message").textContent = "Scène 3D indisponible (WebGL) : les bandes et les chiffres restent utilisables."; }
+
+if (chargerDepuisURL()) $("fichiers").classList.add("cache");
+redimensionner();
+
+var dernier = performance.now();
+function boucle(maintenant) {
+  var dt = (maintenant - dernier) / 1000;
+  dernier = maintenant;
+  if (!audioPret && etat.lecture) {                      // horloge interne s'il n'y a pas d'audio
+    etat.horloge += dt;
+    if (etat.horloge >= etat.duree) { etat.horloge = etat.duree; etat.lecture = false; majBoutonLecture(); }
+  }
+  var t = tempsCourant();
+  mesurerVolume();
+  animerScene(t, maintenant);
+  dessinerBandes(t, maintenant);
+  majPanneau(t);
+  requestAnimationFrame(boucle);
+}
+requestAnimationFrame(boucle);
+</script>
+</body>
+</html>
