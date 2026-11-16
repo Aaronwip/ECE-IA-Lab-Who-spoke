@@ -1,0 +1,15 @@
+{
+  "mode": "nuit",
+  "config": "simsamu",
+  "lr": 1e-05,
+  "reunions_train": 45,
+  "heures_train": 2.3,
+  "reunions_val": 7,
+  "heures_val": 0.4,
+  "epoques": 30,
+  "duree_min": 5.5,
+  "metrique": "DiarizationErrorRate",
+  "avant": 0.1975,
+  "meilleur": 0.1478,
+  "fichier": "meilleur-epoch=29.ckpt"
+}
