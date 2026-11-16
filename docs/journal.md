@@ -189,3 +189,41 @@ Fichiers : results/finetune/2026-11-16_simsamu_lr1e-4_relance/ (resume.json, par
   La petite remontée vue le 12/11 (0,210 -> 0,217) est de la même taille que les oscillations de ce run
   (ex. 0,213 -> 0,217 entre les époques 21 et 22). Conclusion corrigée : le modèle atteint un plateau vers
   l'époque 15 ; on ne voit pas de surapprentissage net, seulement des fluctuations.
+
+Version a (Kaggle, 16/11) : même fine-tuning, taux d'apprentissage 10 fois plus petit (lr = 1e-5).
+Fichiers : results/finetune/2026-11-16_simsamu_lr1e-5/. Version c (lr = 1e-3) : pas lancée, Kaggle est resté en file d'attente (« Queued »).
+
+┌───────────────────────────┬────────────────────┬────────────────────┐
+│ Simsamu, validation       │ lr = 1e-5 (a)      │ lr = 1e-4 (b)      │
+├───────────────────────────┼────────────────────┼────────────────────┤
+│ DER après 30 époques      │ 0,148              │ 0,101              │
+│ Pertes entr. / val (fin)  │ 0,325 / 0,328      │ 0,194 / 0,209      │
+│ Le DER baisse encore ?    │ oui, régulièrement │ non, plateau ~ép. 15 │
+└───────────────────────────┴────────────────────┴────────────────────┘
+
+→ Sous-apprentissage : avec 1e-5, il faut 30 époques pour atteindre ce que 1e-4 atteint dès l'époque 1-2.
+  Les deux pertes restent hautes et proches : le modèle n'a pas fini d'apprendre, il est arrêté par le maximum d'époques.
+
+Mesure finale sur le test Simsamu `reu` (16/11) : 9 appels, 32 min, jamais utilisés pour entraîner ni régler.
+Le choix du modèle fine-tuné pour du français était déjà fait sur la validation (run G) ; le test le mesure, il ne sert pas à choisir.
+
+┌─────────────────────┬──────────────────┬────────────────────────┬────────┐
+│ Simsamu test reu    │ pyannote origine │ fine-tuné Simsamu      │ Écart  │
+├─────────────────────┼──────────────────┼────────────────────────┼────────┤
+│ DER standard        │ 12,10            │ 5,82                   │ −6,28  │
+│ – parole ratée      │ 5,21             │ 0,78                   │ −4,43  │
+│ – fausse alerte     │ 5,34             │ 1,70                   │ −3,64  │
+│ – confusion         │ 1,55             │ 3,34                   │ +1,79  │
+│ DER strict          │ 16,99            │ 11,88                  │ −5,11  │
+│ JER                 │ 17,99            │ 15,08                  │ −2,91  │
+│ Paquet le plus lent │ 0,57             │ 0,57                   │ même   │
+└─────────────────────┴──────────────────┴────────────────────────┴────────┘
+
+→ Le gain de la validation se confirme sur le test : DER standard divisé par deux (13,22 -> 6,38 en validation,
+  12,10 -> 5,82 en test). La validation était donc représentative.
+→ Même schéma qu'en validation : la segmentation fine-tunée rate beaucoup moins de parole et fait moins de
+  fausses alertes, mais la confusion double. Le modèle détecte mieux QUAND on parle, un peu moins bien QUI parle.
+→ Cas d'échec : reu_brulures empire (DER standard 12,12 -> 18,24, confusion 16,9 % en strict) : 3 locuteurs
+  trouvés pour 2 dans la référence, une même voix est coupée en deux. reu_grand_mere : bon nombre de locuteurs (2,
+  l'original en trouvait 3) mais encore 10,4 % de confusion. Plus gros gains : reu_ncb (8,13 -> 0,68)
+  et reu_feu (9,69 -> 1,76).
