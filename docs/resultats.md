@@ -37,6 +37,20 @@ bonne que pyannote : l'essentiel de son erreur est de la **confusion**, les MFCC
 
 Les quatre lignes utilisent le système complet de la démo (paquets de 60 s, fusion < 10 s, seuil 0,5).
 
+### Enregistrement personnel : choix du modèle de la démo en direct
+
+`reunion_mathis` : réunion de 7 min en français, 2 personnes, micro de PC (conditions proches de la soutenance).
+Référence : pré-annotation du système corrigée à l'oreille dans Audacity (`scripts/rttm_audacity.py`).
+
+| Segmentation | DER strict (raté / FA / conf.) | DER standard (raté / FA / conf.) | JER |
+|---|---|---|---|
+| **d'origine** | **11,26** (2,55 / 1,74 / 6,96) | **8,28** (0,52 / 1,56 / 6,19) | 17,2 |
+| fine-tunée Simsamu | 16,18 (4,35 / 6,08 / 5,74) | 9,38 (1,07 / 3,28 / 5,03) | 20,5 |
+
+→ **La démo en direct garde la segmentation d'origine.** Le modèle fine-tuné double les fausses alertes hors du
+téléphone 8 kHz. La pré-annotation venait du modèle fine-tuné : le biais jouait en sa faveur, il perd quand même.
+Limites : un seul fichier, ajouts manuels précis à ±0,5 s environ.
+
 ## 3. Analyse d'ablation (un seul changement à la fois)
 
 | # | Changement | Jeu | DER standard avant → après | Ce qu'on en conclut |
@@ -48,6 +62,7 @@ Les quatre lignes utilisent le système complet de la démo (paquets de 60 s, fu
 | 5 | Segmentation **fine-tunée Simsamu** (F → G) | Simsamu val | 13,22 → 6,38 | DER divisé par 2 en français au téléphone : parole ratée 9,06 → 3,32, fausses alertes 2,98 → 0,43. |
 | 5 bis | idem, sur le **test** `reu` | Simsamu test | 12,10 → 5,82 | Le gain se confirme sur des données jamais vues : la validation était représentative. |
 | 5 ter | idem, sur l'**anglais** (D → H) | Vox dev-10 | 2,99 → 4,69 | **Oubli catastrophique** : en se spécialisant, le modèle perd en anglais (surtout de la parole ratée). |
+| 5 quater | idem, sur une **réunion au micro de PC** (français) | `reunion_mathis` | 8,28 → 9,38 | Hors du téléphone, le fine-tuné perd (fausses alertes 1,56 → 3,28) : le gain est propre au domaine. |
 | 6 | **Taux d'apprentissage** du fine-tuning Simsamu | Simsamu val (DER par fenêtre de 10 s) | voir ci-dessous | 1e-5 : sous-apprentissage ; 1e-4 : bon réglage. |
 
 **Taux d'apprentissage (ligne 6).** Même code, mêmes données, seul le taux change. DER de validation

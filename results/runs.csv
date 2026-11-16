@@ -16,3 +16,5 @@ date,approche,parametres,jeu,nb_fichiers,der_strict,miss_strict,fa_strict,conf_s
 2026-11-14,pyannote-paquets,paquet=60s;seuil=0.5;fusion=10s;seg=finetune-simsamu,voxconverse-dev-10,10,8.89,4.32,2.45,2.12,4.69,2.45,0.79,1.45,21.61,1443.1
 2026-11-16,pyannote-paquets,paquet=60s;seuil=0.5;fusion=10s,simsamu-test-reu,9,16.99,7.49,7.28,2.22,12.1,5.21,5.34,1.55,17.99,956.0
 2026-11-16,pyannote-paquets,paquet=60s;seuil=0.5;fusion=10s;seg=finetune-simsamu,simsamu-test-reu,9,11.88,1.91,5.34,4.63,5.82,0.78,1.7,3.34,15.08,829.5
+2026-11-16,pyannote-paquets,paquet=60s;seuil=0.5;fusion=10s,own-reunion-mathis,1,11.26,2.55,1.74,6.96,8.28,0.52,1.56,6.19,17.22,
+2026-11-16,pyannote-paquets,paquet=60s;seuil=0.5;fusion=10s;seg=finetune-simsamu,own-reunion-mathis,1,16.18,4.35,6.08,5.74,9.38,1.07,3.28,5.03,20.53,

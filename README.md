@@ -18,8 +18,10 @@ Projet individuel Intelligence Lab (ECE Paris, 16/10 → 16/11/2026, mentor Math
 | pyannote, fichier entier | 5,51 | 2,53 | 15,3 |
 | pyannote par paquets de 60 s (système de la démo) | 6,02 | 2,99 | 16,8 |
 
-Sur Simsamu (validation `dj_2023`), le même système fait 13,22 % de DER standard. Le fine-tuning divise
-par deux le DER de validation de la segmentation (0,198 → 0,098). La mesure sur le test `reu` reste à faire.
+**Fine-tuning Simsamu** (appels au SAMU simulés, français, téléphone 8 kHz) : sur le test `reu`, jamais vu,
+le DER standard passe de **12,10 % à 5,82 %**. Le gain est propre à ce domaine : en anglais (VoxConverse) et sur
+une réunion enregistrée au micro de PC, le modèle fine-tuné fait moins bien que l'original. La démo en direct
+garde donc la segmentation d'origine. Détails, ablation et cas d'échec : [`docs/resultats.md`](docs/resultats.md).
 Tous les runs : [`results/runs.csv`](results/runs.csv). Progression : [`docs/journal.md`](docs/journal.md).
 Données : [`docs/fiche_corpus.md`](docs/fiche_corpus.md).
 
