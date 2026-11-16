@@ -32,7 +32,9 @@ def audacity_vers_rttm(etiquettes, rttm):
     uri = Path(rttm).stem
     lignes = []
     for ligne in Path(etiquettes).read_text(encoding="utf-8-sig").splitlines():
-        champs = ligne.split("\t")
+        # Audacity sépare par des tabulations ; un éditeur (VS Code) peut les remplacer par des espaces.
+        # Sans tabulation, on coupe sur les espaces, en 3 morceaux au plus (le nom peut contenir des espaces).
+        champs = ligne.split("\t") if "\t" in ligne else ligne.split(None, 2)
         # Audacity peut ajouter des lignes « \ » (étiquettes de fréquence) : on garde seulement les vraies étiquettes
         if len(champs) < 3 or champs[0].startswith("\\"):
             continue
@@ -40,6 +42,8 @@ def audacity_vers_rttm(etiquettes, rttm):
         if fin <= debut or not locuteur:
             raise SystemExit(f"Étiquette invalide (fin avant début ou sans nom) : {ligne!r}")
         lignes.append(f"SPEAKER {uri} 1 {debut:.3f} {fin - debut:.3f} <NA> <NA> {locuteur} <NA> <NA>")
+    if not lignes:
+        raise SystemExit(f"Aucune étiquette reconnue dans {etiquettes} (attendu : début fin locuteur)")
     Path(rttm).parent.mkdir(parents=True, exist_ok=True)
     Path(rttm).write_text("\n".join(lignes) + "\n", encoding="utf-8")
     return len(lignes)
