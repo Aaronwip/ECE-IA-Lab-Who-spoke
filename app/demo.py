@@ -23,6 +23,7 @@ import gradio as gr
 import librosa
 import matplotlib
 import numpy as np
+import soundfile as sf
 from matplotlib.figure import Figure
 from pyannote.core import Annotation
 
@@ -81,9 +82,13 @@ def tableau(resultat):
     return sorted(lignes, key=lambda ligne: ligne[1])
 
 
-def exporter(resultat, duree):
-    """Écrit le RTTM (format standard, comparable aux références) et un JSON lisible."""
+def exporter(resultat, duree, audio):
+    """Écrit le RTTM (format standard, comparable aux références), un JSON lisible,
+    et l'audio 16 kHz : utile surtout en direct, où l'enregistrement n'existe nulle part ailleurs
+    (on le rejoue ensuite dans app/theatre.html avec le RTTM)."""
     dossier = Path(tempfile.mkdtemp())
+    wav = dossier / f"{resultat.uri}.wav"
+    sf.write(wav, audio, SR)
     rttm = dossier / f"{resultat.uri}.rttm"
     with open(rttm, "w") as f:
         resultat.write_rttm(f)
@@ -96,7 +101,7 @@ def exporter(resultat, duree):
     }
     js = dossier / f"{resultat.uri}.json"
     js.write_text(json.dumps(contenu, indent=2, ensure_ascii=False), encoding="utf-8")
-    return [str(rttm), str(js)]
+    return [str(rttm), str(js), str(wav)]
 
 
 def analyser(chemin):
@@ -128,7 +133,7 @@ def analyser(chemin):
     statut = (f"**Terminé** : {duree:.0f} s d'audio, {len(resultat.labels())} locuteur(s). "
               f"Paquet le plus lent : {pire:.2f} x sa durée ({verdict}). "
               f"Clique sur une ligne du tableau pour écouter le segment.")
-    yield dessiner(resultat, duree, duree), tableau(resultat), statut, audio, exporter(resultat, duree)
+    yield dessiner(resultat, duree, duree), tableau(resultat), statut, audio, exporter(resultat, duree, audio)
 
 
 def ecouter(audio, evt: gr.SelectData):
@@ -204,7 +209,7 @@ def finir():
     statut = (f"**Terminé** : {minsec(e['recu'])} enregistrées, {len(resultat.labels())} locuteur(s). "
               f"Paquet le plus lent : {pire:.2f} x sa durée ({'direct tenu' if pire < 1 else 'trop lent'}). "
               "Clique sur une ligne du tableau pour écouter le segment.")
-    yield dessiner(resultat, duree, duree), tableau(resultat), statut, e["audio"], exporter(resultat, duree)
+    yield dessiner(resultat, duree, duree), tableau(resultat), statut, e["audio"], exporter(resultat, duree, e["audio"])
 
 
 def zone_resultats():
@@ -216,7 +221,7 @@ def zone_resultats():
                                 interactive=False, label="Tours de parole (clic = écouter)", max_height=350)
         with gr.Column():
             extrait = gr.Audio(label="Segment sélectionné", interactive=False, autoplay=True)
-            fichiers = gr.File(label="Export RTTM / JSON", file_count="multiple")
+            fichiers = gr.File(label="Export RTTM / JSON / WAV", file_count="multiple")
     audio_charge = gr.State()  # l'audio 16 kHz, gardé pour l'écoute des segments
     segments.select(ecouter, inputs=audio_charge, outputs=extrait)
     return [timeline, segments, statut, audio_charge, fichiers]

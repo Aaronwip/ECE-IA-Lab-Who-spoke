@@ -18,14 +18,6 @@ Objectif : répondre à « qui parle, et quand ? » sur des conversations jamais
 - Audio chargé avec soundfile puis passé à pyannote sous la forme `{"waveform", "sample_rate"}` (torchcodec pose problème sous Windows).
 - `HF_TOKEN` dans `.env`, modèle `pyannote/speaker-diarization-community-1`.
 
-## Structure
-- `data/` : samples (tests rapides), raw (corpus téléchargés), own (enregistrements consentis). Ignoré par Git.
-- `outputs/` : RTTM prédits. Ignoré par Git.
-- `src/whospoke/` (prévu) : io_rttm.py, baseline.py, embeddings.py, evaluate.py
-- `scripts/` : téléchargement des données, lancement des runs.
-- `results/runs.csv` : une ligne par run (date, approche, paramètres, jeu, DER, JER, temps). Versionné.
-- `docs/` : fiche_corpus.md, journal.md. `app/` : démo Gradio.
-
 ## Données
 - VoxConverse : régler sur `dev` (20-30 fichiers pour itérer), mesurer sur `test`.
 - AMI : découpage officiel par réunion.
