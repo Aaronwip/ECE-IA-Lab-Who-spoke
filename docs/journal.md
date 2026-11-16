@@ -167,3 +167,25 @@ Résultat (14/11) :
 → Décision à prendre : quel modèle pour la démo ? Elle se fera sur des enregistrements inconnus,
   ni téléphone 8 kHz, ni débat télé anglais. Il faut trancher sur une validation proche de la démo
   (enregistrements personnels en français au micro), jamais sur le test.
+
+
+Version b (Kaggle, 16/11) : relance du fine-tuning Simsamu à l'identique (lr = 1e-4), pour mesurer le bruit entre deux runs.
+Fichiers : results/finetune/2026-11-16_simsamu_lr1e-4_relance/ (resume.json, par_epoque.csv).
+
+┌──────────────────────────────┬──────────────────┬──────────────────┐
+│ Simsamu, validation dj_2023  │ Run du 12/11     │ Relance du 16/11 │
+├──────────────────────────────┼──────────────────┼──────────────────┤
+│ DER avant fine-tuning        │ 0,1975           │ 0,1975           │
+│ Meilleur DER (par fenêtre)   │ 0,0976           │ 0,1009           │
+│ Meilleure époque             │ 16               │ 27               │
+│ Époques faites               │ 22 (arrêt anticipé) │ 30 (maximum atteint) │
+│ Perte de validation minimale │ 0,210 (ép. 17)   │ 0,208 (ép. 28)   │
+└──────────────────────────────┴──────────────────┴──────────────────┘
+
+→ Même code, mêmes données, même taux : 0,0976 contre 0,1009. Le hasard (pas de graine fixée : ordre des
+  lots, fenêtres de 10 s tirées au sort) fait varier le résultat d'environ 0,003. Un écart plus petit que ça
+  entre deux réglages ne prouve rien.
+→ Cette fois, pas d'arrêt anticipé : la perte de validation baisse encore très lentement jusqu'à la 30e époque.
+  La petite remontée vue le 12/11 (0,210 -> 0,217) est de la même taille que les oscillations de ce run
+  (ex. 0,213 -> 0,217 entre les époques 21 et 22). Conclusion corrigée : le modèle atteint un plateau vers
+  l'époque 15 ; on ne voit pas de surapprentissage net, seulement des fluctuations.
