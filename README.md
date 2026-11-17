@@ -27,12 +27,12 @@ Données : [`docs/fiche_corpus.md`](docs/fiche_corpus.md).
 
 ## Utiliser le projet, étape par étape
 
-### Rendu en deux archives (limite de 20 Mo par fichier)
-- `WhoSpoke_1_projet.zip` : tout le projet (code, docs, résultats, les trois exemples avec leur audio). Il suffit seul.
-- `WhoSpoke_2_modele.zip` : les poids de la segmentation fine-tunée sur Simsamu (facultatif).
-  Le décompresser **dans le même dossier** que la première archive : le fichier se range tout seul dans
-  `results/finetune/2026-11-12_nuit_simsamu/segmentation_finetunee.ckpt`. Il ne sert que pour lancer
-  `uv run python app/serveur_theatre.py --segmentation results/finetune/2026-11-12_nuit_simsamu/segmentation_finetunee.ckpt`.
+### Contenu du zip rendu (limite de 20 Mo)
+Le zip contient tout le projet : code, docs, résultats et les trois exemples avec leur audio.
+Les poids de la segmentation fine-tunée sur Simsamu (17 Mo) n'y sont pas, faute de place. Ils ne sont pas
+nécessaires : la démo utilise la segmentation d'origine, et les sorties du modèle fine-tuné sont déjà là
+(`app/exemples/*_finetunee.rttm`, `results/runs.csv`, `results/finetune/`). Pour les recalculer :
+`kaggle/finetune_segmentation.ipynb`.
 
 ### Étape 0 — Voir le résultat sans rien installer (1 minute)
 Double-cliquer sur `app/theatre.html`, puis cliquer sur un des trois exemples de la barre de gauche et sur « Lecture ».
